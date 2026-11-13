@@ -1,0 +1,83 @@
+name: Deploy Demo Frontend to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build_and_test:
+    name: Quality Checks & Build Static Demo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies cleanly
+        run: npm ci
+
+      - name: Lint Firestore security rules
+        run: npm run lint:rules
+
+      - name: Run TypeScript type check
+        run: npm run lint
+
+      - name: Run automated ERP test suite
+        run: npm test
+
+      - name: Configure GitHub Pages base path
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Resolve Vite base path
+        run: |
+          RAW_BASE="${{ steps.pages.outputs.base_path }}"
+          if [ -z "$RAW_BASE" ] || [ "$RAW_BASE" = "/" ]; then
+            echo "VITE_BASE_PATH=/" >> "$GITHUB_ENV"
+          else
+            echo "VITE_BASE_PATH=${RAW_BASE%/}/" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build static Vite bundle
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || '' }}
+
+      - name: Upload GitHub Pages artifact (dist only)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy artifact to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Report deployment URL
+        run: |
+          echo "### GitHub Pages Demo Deployment Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Live URL: ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Note: GitHub Pages serves the static demo SPA + Firebase client SDK. Full server-side AI, Excel, Backup Vault, and OAuth APIs run on the Cloud Run full-stack deployment." >> "$GITHUB_STEP_SUMMARY"

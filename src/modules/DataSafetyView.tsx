@@ -24,6 +24,7 @@ import {
   writeAuditLog,
 } from '../lib/firestore-service';
 import { formatPKR } from '../lib/erp-engine';
+import { apiUrl, readJsonSafe } from '../lib/api-client';
 import type { ExcelExportDomain, ExcelImportPreview } from '../lib/excel-engine';
 import type { StagingRestoreVerification } from '../lib/backup-engine';
 import { BackupRecord, BackupType, IntegrationSettings, SyncJob } from '../types/erp';
@@ -118,14 +119,14 @@ export function DataSafetyView() {
     if (!userAccount) return;
     try {
       const token = await getIdToken();
-      const res = await fetch('/api/integrations/status', {
+      const res = await fetch(apiUrl('/api/integrations/status'), {
         headers: {
           Authorization: `Bearer ${token}`,
           'X-Clinic-Role': userAccount.role,
         },
       });
       if (res.ok) {
-        const data = (await res.json()) as IntegrationRuntimeStatus;
+        const data = await readJsonSafe<IntegrationRuntimeStatus>(res);
         setRuntimeStatus(data);
       }
     } catch {
@@ -182,7 +183,7 @@ export function DataSafetyView() {
     try {
       const snapshot = await collectFullOrganizationSnapshot(activeOrgId);
       const token = await getIdToken();
-      const res = await fetch('/api/backup/create', {
+      const res = await fetch(apiUrl('/api/backup/create'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -199,7 +200,7 @@ export function DataSafetyView() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readJsonSafe<Record<string, any>>(res);
       if (!res.ok) {
         throw new Error(data.error || 'Encrypted backup failed.');
       }
@@ -297,14 +298,14 @@ export function DataSafetyView() {
     setBannerError(null);
     try {
       const token = await getIdToken();
-      const res = await fetch(`/api/backup/download/${encodeURIComponent(activeOrgId)}/${encodeURIComponent(bkp.storagePath)}`, {
+      const res = await fetch(apiUrl(`/api/backup/download/${encodeURIComponent(activeOrgId)}/${encodeURIComponent(bkp.storagePath)}`), {
         headers: {
           Authorization: `Bearer ${token}`,
           'X-Clinic-Role': userAccount.role,
         },
       });
       if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
+        const d = await readJsonSafe<{ error?: string }>(res).catch((e) => ({ error: e instanceof Error ? e.message : 'Archive download failed.' }));
         throw new Error(d.error || 'Archive download failed.');
       }
       const blob = await res.blob();
@@ -345,7 +346,7 @@ export function DataSafetyView() {
       const currentSnapshot = await collectFullOrganizationSnapshot(activeOrgId);
       const token = await getIdToken();
 
-      const preRes = await fetch('/api/backup/create', {
+      const preRes = await fetch(apiUrl('/api/backup/create'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -359,11 +360,11 @@ export function DataSafetyView() {
           snapshot: currentSnapshot,
         }),
       });
-      const preData = await preRes.json();
+      const preData = await readJsonSafe<{ backupId?: string; error?: string }>(preRes);
       if (!preRes.ok) throw new Error(preData.error || 'Pre-restore backup failed.');
 
       // Step 2: Run staging decrypt + checksum + financial reconciliation verification
-      const stageRes = await fetch('/api/backup/restore-staging', {
+      const stageRes = await fetch(apiUrl('/api/backup/restore-staging'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -376,7 +377,7 @@ export function DataSafetyView() {
           expectedChecksum: bkp.checksum,
         }),
       });
-      const stageData = (await stageRes.json()) as StagingRestoreVerification;
+      const stageData = await readJsonSafe<StagingRestoreVerification>(stageRes);
       if (!stageRes.ok || !stageData.valid) {
         throw new Error(stageData.errors?.join('; ') || 'Staging verification failed.');
       }
@@ -462,7 +463,7 @@ export function DataSafetyView() {
     setBannerInfo(null);
     try {
       const token = await getIdToken();
-      const res = await fetch('/api/excel/export', {
+      const res = await fetch(apiUrl('/api/excel/export'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -490,7 +491,7 @@ export function DataSafetyView() {
         }),
       });
       if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
+        const d = await readJsonSafe<{ error?: string }>(res).catch((e) => ({ error: e instanceof Error ? e.message : 'Excel export failed.' }));
         throw new Error(d.error || 'Excel export failed.');
       }
       const blob = await res.blob();
@@ -544,7 +545,7 @@ export function DataSafetyView() {
           : staff.map((s) => s.staffCode);
 
       const token = await getIdToken();
-      const res = await fetch('/api/excel/parse-import', {
+      const res = await fetch(apiUrl('/api/excel/parse-import'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -553,9 +554,9 @@ export function DataSafetyView() {
         },
         body: JSON.stringify({ fileBase64, targetEntity: importTarget, existingCodes }),
       });
-      const data = await res.json();
+      const data = await readJsonSafe<ExcelImportPreview & { error?: string }>(res);
       if (!res.ok) throw new Error(data.error || 'Failed to parse Excel file.');
-      setImportPreview(data as ExcelImportPreview);
+      setImportPreview(data);
     } catch (err) {
       setBannerError(err instanceof Error ? err.message : 'Excel parsing failed.');
     } finally {
@@ -630,14 +631,14 @@ export function DataSafetyView() {
     setBannerInfo(null);
     try {
       const token = await getIdToken();
-      const res = await fetch('/api/wordpress/test', {
+      const res = await fetch(apiUrl('/api/wordpress/test'), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'X-Clinic-Role': userAccount.role,
         },
       });
-      const data = await res.json();
+      const data = await readJsonSafe<{ connected?: boolean; vaultStatus?: { ssl?: boolean }; error?: string }>(res);
       if (!res.ok || !data.connected) {
         throw new Error(data.error || 'WordPress connection failed.');
       }
@@ -656,7 +657,7 @@ export function DataSafetyView() {
     setBannerInfo(null);
     try {
       const token = await getIdToken();
-      const res = await fetch('/api/wordpress/publish-public', {
+      const res = await fetch(apiUrl('/api/wordpress/publish-public'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -670,7 +671,12 @@ export function DataSafetyView() {
           includeApprovedPrices: wpIncludePrices,
         }),
       });
-      const data = await res.json();
+      const data = await readJsonSafe<{
+        sanitizedPreview?: Record<string, unknown> | null;
+        published?: boolean;
+        pageId?: string | number;
+        error?: string;
+      }>(res);
       setWpSanitizedPreview(data.sanitizedPreview || null);
       if (!res.ok || !data.published) {
         setBannerError(data.error || 'WordPress publish skipped (credentials unconfigured); verified zero-PII preview displayed below.');
@@ -694,24 +700,31 @@ export function DataSafetyView() {
 
   const handleDownloadWpPlugin = async () => {
     if (!userAccount) return;
-    const token = await getIdToken();
-    const res = await fetch('/api/wordpress/plugin-download', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Clinic-Role': userAccount.role,
-      },
-    });
-    if (!res.ok) {
-      setBannerError('Unable to download WordPress vault plugin.');
-      return;
+    try {
+      const token = await getIdToken();
+      const res = await fetch(apiUrl('/api/wordpress/plugin-download'), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Clinic-Role': userAccount.role,
+        },
+      });
+      if (!res.ok) {
+        const d = await readJsonSafe<{ error?: string }>(res).catch((e) => ({
+          error: e instanceof Error ? e.message : 'Unable to download WordPress vault plugin.',
+        }));
+        setBannerError(d.error || 'Unable to download WordPress vault plugin.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'tawakal-private-backup-vault.php';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : 'Unable to download WordPress vault plugin.');
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'tawakal-private-backup-vault.php';
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleConnectMicrosoft = async () => {
@@ -719,17 +732,20 @@ export function DataSafetyView() {
     setBannerError(null);
     try {
       const token = await getIdToken();
-      const res = await fetch('/api/microsoft/auth/url', {
+      const res = await fetch(apiUrl('/api/microsoft/auth/url'), {
         headers: {
           Authorization: `Bearer ${token}`,
           'X-Clinic-Role': userAccount.role,
         },
       });
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await readJsonSafe<{ url?: string; error?: string }>(res);
+      if (!res.ok || !data.url) {
         throw new Error(data.error || 'Microsoft Graph OAuth is not configured.');
       }
-      window.open(data.url, 'ms_oauth_popup', 'width=620,height=720');
+      const popup = window.open(data.url, 'ms_oauth_popup', 'width=620,height=720');
+      if (!popup) {
+        setBannerError('Popup blocked by browser. Please allow popups for Microsoft OAuth consent.');
+      }
     } catch (err) {
       setBannerError(err instanceof Error ? err.message : 'Microsoft OAuth launch failed.');
     }
@@ -741,14 +757,14 @@ export function DataSafetyView() {
     setBannerError(null);
     try {
       const token = await getIdToken();
-      const res = await fetch('/api/microsoft/test', {
+      const res = await fetch(apiUrl('/api/microsoft/test'), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'X-Clinic-Role': userAccount.role,
         },
       });
-      const data = await res.json();
+      const data = await readJsonSafe<{ connected?: boolean; driveType?: string; error?: string }>(res);
       if (!res.ok || !data.connected) throw new Error(data.error || 'Microsoft Graph not connected.');
       setBannerInfo(`Microsoft Graph connected (${data.driveType || 'OneDrive/SharePoint'}).`);
     } catch (err) {

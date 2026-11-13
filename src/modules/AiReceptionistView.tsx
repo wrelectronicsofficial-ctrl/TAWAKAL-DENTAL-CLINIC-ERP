@@ -3,6 +3,7 @@ import { AlertTriangle, Bot, CheckCircle2, PhoneCall, PhoneForwarded, PhoneOutgo
 import { useErp } from '../context/ErpContext';
 import { generateRecordId, saveSubdoc } from '../lib/firestore-service';
 import { computeAvailableSlots } from '../lib/erp-engine';
+import { apiUrl, readJsonSafe } from '../lib/api-client';
 import { CallRecord } from '../types/erp';
 
 interface ChatTurn {
@@ -49,7 +50,7 @@ export function AiReceptionistView() {
 
     try {
       const token = await getIdToken();
-      const res = await fetch('/api/ai/receptionist', {
+      const res = await fetch(apiUrl('/api/ai/receptionist'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -70,7 +71,14 @@ export function AiReceptionistView() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readJsonSafe<{
+        reply: string;
+        intent?: string;
+        language?: string;
+        emergencyFlag?: boolean;
+        transferToHuman?: boolean;
+        error?: string;
+      }>(res);
       if (!res.ok) throw new Error(data.error || 'AI Receptionist failed.');
 
       setTurns((prev) => [

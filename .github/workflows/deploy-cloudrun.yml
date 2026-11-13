@@ -1,0 +1,75 @@
+name: Full-Stack CI & Cloud Run Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cloudrun-production
+  cancel-in-progress: false
+
+jobs:
+  verify_and_build:
+    name: Verify Full-Stack ERP & Container Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies cleanly
+        run: npm ci
+
+      - name: Lint Firestore security rules
+        run: npm run lint:rules
+
+      - name: Run TypeScript type check
+        run: npm run lint
+
+      - name: Run automated ERP test suite
+        run: npm test
+
+      - name: Build production frontend & Express backend
+        run: npm run build:prod
+
+  deploy_cloud_run:
+    name: Deploy Production Clinic ERP to Google Cloud Run
+    needs: verify_and_build
+    if: ${{ vars.GCP_CLOUDRUN_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production-cloudrun
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via Workload Identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy container to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: tawakal-dental-erp
+          region: ${{ vars.GCP_REGION || 'asia-southeast1' }}
+          source: .
+          flags: --allow-unauthenticated --port=3000
+
+      - name: Report Production URL
+        run: |
+          echo "### Production Cloud Run Deployment Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production Service URL: ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"

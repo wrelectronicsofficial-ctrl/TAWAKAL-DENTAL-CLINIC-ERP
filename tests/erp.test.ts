@@ -386,6 +386,40 @@ async function runAsyncExcelTests() {
     assert.ok(preview.rows[2].errors.some((e) => e.includes('Duplicate')));
   });
 
+  // 13. GitHub CI/CD, Static Assets & Secret Safety Check
+  await runTest('Verify GitHub Actions workflows, lockfile, README, assets, and zero frontend secret exposure', () => {
+    const root = process.cwd();
+    assert.ok(fs.existsSync(path.join(root, 'package-lock.json')), 'package-lock.json required for npm ci');
+    assert.ok(fs.existsSync(path.join(root, '.github/workflows/deploy.yml')), 'GitHub Pages workflow missing');
+    assert.ok(fs.existsSync(path.join(root, '.github/workflows/deploy-cloudrun.yml')), 'Cloud Run workflow missing');
+    assert.ok(fs.existsSync(path.join(root, 'README.md')), 'README.md missing');
+    assert.ok(fs.existsSync(path.join(root, 'public/logo.svg')), 'public/logo.svg missing');
+    assert.ok(fs.existsSync(path.join(root, 'public/404.html')), 'public/404.html missing');
+
+    const gitignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf-8');
+    assert.ok(gitignore.includes('.env'), '.gitignore must ignore .env');
+    assert.ok(gitignore.includes('.clinic_vault/'), '.gitignore must ignore .clinic_vault/');
+    assert.ok(gitignore.includes('*service-account*.json'), '.gitignore must ignore service account JSON');
+
+    const deployYml = fs.readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf-8');
+    assert.ok(deployYml.includes('npm ci'), 'Workflow must use npm ci');
+    assert.ok(deployYml.includes('npm test'), 'Workflow must run tests');
+    assert.ok(deployYml.includes('VITE_BASE_PATH'), 'Workflow must set VITE_BASE_PATH');
+
+    const srcWalk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) srcWalk(full);
+        else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
+          const content = fs.readFileSync(full, 'utf-8');
+          assert.ok(!content.includes('VITE_GEMINI'), `Forbidden VITE_GEMINI secret reference in ${full}`);
+          assert.ok(!/env\.WP_APP_PASSWORD|env\.MS_CLIENT_SECRET|env\.BACKUP_ENCRYPTION_KEY|env\.GEMINI_API_KEY/.test(content), `Backend secret env read in frontend ${full}`);
+        }
+      }
+    };
+    srcWalk(path.join(root, 'src'));
+  });
+
   console.log(`\nTest Summary: ${passed} passed, ${failed} failed.`);
   if (failed > 0) {
     process.exit(1);

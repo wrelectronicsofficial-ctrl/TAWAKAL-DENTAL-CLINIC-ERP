@@ -38,9 +38,11 @@ export function LoginScreen() {
         <div className="lg:col-span-5 bg-slate-900 text-white p-8 sm:p-10 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-3 mb-10">
-              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-                <ShieldCheck className="w-5 h-5 text-white" />
-              </div>
+              <img
+                src={`${import.meta.env.BASE_URL}logo.svg`}
+                alt="Tawakal Dental Clinic Logo"
+                className="w-10 h-10 rounded-xl shrink-0 border border-slate-700"
+              />
               <div>
                 <h1 className="text-lg font-semibold tracking-tight text-white">Tawakal Dental Clinic</h1>
                 <p className="text-xs text-slate-400">Saudabad, Malir, Karachi · ERP &amp; Clinical EHR</p>

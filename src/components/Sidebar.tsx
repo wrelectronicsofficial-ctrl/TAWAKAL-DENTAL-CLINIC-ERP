@@ -97,9 +97,16 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       {/* Brand header */}
       <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800">
         {!collapsed && (
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-white truncate">Tawakal Dental</p>
-            <p className="text-[11px] text-slate-400 truncate">{orgConfig?.location?.split(',')[0] || 'Malir, Karachi'}</p>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src={`${import.meta.env.BASE_URL}logo.svg`}
+              alt="Tawakal Dental Clinic"
+              className="w-7 h-7 rounded-lg shrink-0"
+            />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white truncate">Tawakal Dental</p>
+              <p className="text-[11px] text-slate-400 truncate">{orgConfig?.location?.split(',')[0] || 'Malir, Karachi'}</p>
+            </div>
           </div>
         )}
         <button

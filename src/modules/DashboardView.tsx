@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
 import { formatPKR } from '../lib/erp-engine';
+import { apiUrl, readJsonSafe } from '../lib/api-client';
 import { DashboardSummary } from '../components/DashboardSummary';
 
 const CHART_COLORS = ['#2563EB', '#0D9488', '#0F172A', '#D97706', '#64748B'];
@@ -128,7 +129,7 @@ export function DashboardView({ onOpenWizard }: { onOpenWizard: () => void }) {
     setAiError(null);
     try {
       const token = await getIdToken();
-      const res = await fetch('/api/ai/assistant', {
+      const res = await fetch(apiUrl('/api/ai/assistant'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,9 +145,9 @@ export function DashboardView({ onOpenWizard }: { onOpenWizard: () => void }) {
           },
         }),
       });
-      const data = await res.json();
+      const data = await readJsonSafe<{ answer?: string; error?: string }>(res);
       if (!res.ok) throw new Error(data.error || 'Assistant request failed');
-      setAiAnswer(data.answer);
+      setAiAnswer(data.answer || '');
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'Unable to query AI assistant');
     } finally {

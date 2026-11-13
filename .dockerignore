@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-server
+.git
+.env
+.env.*
+!.env.example
+.clinic_vault
+public/assets/aistudio
+*firebase-adminsdk*.json
+*service-account*.json
+*.log

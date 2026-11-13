@@ -1,9 +1,16 @@
 node_modules/
 build/
 dist/
+dist-server/
 coverage/
 .DS_Store
 *.log
-.env*
+.env
+.env.*
 !.env.example
 .clinic_vault/
+public/assets/aistudio/
+*firebase-adminsdk*.json
+*service-account*.json
+*.pem
+*.key
