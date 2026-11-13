@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CheckCircle2, CreditCard, FileSpreadsheet, Plus, Printer, Receipt, Wallet } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
+import { PrintLetterhead } from '../components/PrintLetterhead';
 import { generateRecordId, postJournalVoucher, saveSubdoc } from '../lib/firestore-service';
 import { calculateInvoiceTotals, formatPKR, validateDoubleEntryJournal } from '../lib/erp-engine';
 import { canPerformFinancialAction } from '../lib/rbac';
@@ -307,9 +308,47 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
       });
   }, [budgets, journals, budgetMonth]);
 
+  const financialSummary = useMemo(() => {
+    const billed = invoices.reduce((s, i) => s + i.grandTotal, 0);
+    const collected = invoices.reduce((s, i) => s + i.paidAmount, 0);
+    const due = invoices.reduce((s, i) => s + i.balanceDue, 0);
+    const totalDebit = journals.reduce((s, j) => s + j.totalDebit, 0);
+    const totalCredit = journals.reduce((s, j) => s + j.totalCredit, 0);
+    return { billed, collected, due, totalDebit, totalCredit };
+  }, [invoices, journals]);
+
+  const printDocTitle =
+    tab === 'billing'
+      ? 'Patient Invoices & Receivables Statement'
+      : tab === 'accounting'
+      ? 'Double-Entry General Ledger Report'
+      : `Monthly Budget vs Actual Report (${budgetMonth})`;
+
+  const printMeta =
+    tab === 'billing'
+      ? [
+          { label: 'Total Billed', value: formatPKR(financialSummary.billed) },
+          { label: 'Total Collected', value: formatPKR(financialSummary.collected) },
+          { label: 'Receivables Due', value: formatPKR(financialSummary.due) },
+        ]
+      : tab === 'accounting'
+      ? [
+          { label: 'Total Vouchers', value: String(journals.length) },
+          { label: 'Total Debit', value: formatPKR(financialSummary.totalDebit) },
+          { label: 'Total Credit', value: formatPKR(financialSummary.totalCredit) },
+        ]
+      : [{ label: 'Budget Period', value: budgetMonth }];
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 print-a4-sheet">
+      <PrintLetterhead
+        clinicConfig={orgConfig}
+        documentTitle={printDocTitle}
+        preparedBy={userAccount?.displayName}
+        metadataPairs={printMeta}
+      />
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Billing, Double-Entry Ledger &amp; Budgets</h1>
           <p className="text-sm text-slate-500">PKR invoicing, partial payments, balanced journal vouchers (Debit = Credit), and monthly budgets</p>
@@ -338,12 +377,12 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
         </div>
       </div>
 
-      {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 no-print">{error}</div>}
 
       {tab === 'billing' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Create Invoice */}
-          <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5">
+          <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5 no-print">
             <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
               <Receipt className="w-4 h-4 text-blue-600" />
               <span>Generate Patient Invoice</span>
@@ -418,11 +457,11 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
           </div>
 
           {/* Invoice List */}
-          <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl overflow-hidden print-full-width print-a4-sheet">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900">Patient Invoices &amp; Receivables</h3>
               <button type="button" onClick={() => window.print()} className="text-xs text-blue-600 flex items-center gap-1 cursor-pointer no-print">
-                <Printer className="w-3.5 h-3.5" /> Print
+                <Printer className="w-3.5 h-3.5" /> Print Statement (A4)
               </button>
             </div>
             {invoices.length === 0 ? (
@@ -437,7 +476,7 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
                       <th className="py-2.5 px-4 text-right">Total</th>
                       <th className="py-2.5 px-4 text-right">Paid</th>
                       <th className="py-2.5 px-4 text-right">Balance</th>
-                      <th className="py-2.5 px-4 text-right">Action</th>
+                      <th className="py-2.5 px-4 text-right no-print">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -451,7 +490,7 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
                         <td className="py-3 px-4 text-right font-mono tabular-nums">{formatPKR(inv.grandTotal)}</td>
                         <td className="py-3 px-4 text-right font-mono tabular-nums text-emerald-700">{formatPKR(inv.paidAmount)}</td>
                         <td className="py-3 px-4 text-right font-mono tabular-nums font-semibold text-slate-900">{formatPKR(inv.balanceDue)}</td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-3 px-4 text-right no-print">
                           {inv.balanceDue > 0 ? (
                             <button
                               type="button"
@@ -481,7 +520,7 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
 
       {tab === 'accounting' && canAccount && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5">
+          <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5 no-print">
             <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4 text-teal-600" />
               <span>Post Double-Entry Voucher</span>
@@ -532,10 +571,15 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
             </form>
           </div>
 
-          <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl overflow-hidden print-full-width print-a4-sheet">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900">General Ledger Journals (Debit = Credit Verified)</h3>
-              <span className="text-xs text-slate-500 tabular-nums">{journals.length} vouchers</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500 tabular-nums">{journals.length} vouchers</span>
+                <button type="button" onClick={() => window.print()} className="text-xs text-blue-600 flex items-center gap-1 cursor-pointer no-print">
+                  <Printer className="w-3.5 h-3.5" /> Print Ledger (A4)
+                </button>
+              </div>
             </div>
             {journals.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-500">No accounting vouchers posted yet.</div>
@@ -568,6 +612,13 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 border-t border-slate-200 font-semibold text-slate-900">
+                      <td colSpan={3} className="py-2.5 px-4 text-right">Ledger Totals</td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums">{formatPKR(financialSummary.totalDebit)}</td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums">{formatPKR(financialSummary.totalCredit)}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}
@@ -577,7 +628,7 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
 
       {tab === 'budgets' && canAccount && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5">
+          <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5 no-print">
             <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
               <Wallet className="w-4 h-4 text-blue-600" />
               <span>Assign Monthly Budget</span>
@@ -598,14 +649,19 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
             </form>
           </div>
 
-          <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-900">Budget vs Actual Spending ({budgetMonth})</h3>
+          <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-5 space-y-4 print-full-width print-a4-sheet">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-900">Budget vs Actual Spending ({budgetMonth})</h3>
+              <button type="button" onClick={() => window.print()} className="text-xs text-blue-600 flex items-center gap-1 cursor-pointer no-print">
+                <Printer className="w-3.5 h-3.5" /> Print Budgets (A4)
+              </button>
+            </div>
             {budgetComparison.length === 0 ? (
               <p className="text-xs text-slate-500 py-8 text-center">No budget targets configured for {budgetMonth}.</p>
             ) : (
               <div className="space-y-3">
                 {budgetComparison.map((b) => (
-                  <div key={b.id} className="p-3.5 rounded-lg border border-slate-200 space-y-2 text-xs">
+                  <div key={b.id} className="p-3.5 rounded-lg border border-slate-200 space-y-2 text-xs print-avoid-break">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-slate-900">{b.category}</span>
                       <span className="font-mono tabular-nums text-slate-700">
@@ -631,7 +687,7 @@ export function BillingAndAccountingView({ defaultTab = 'billing' }: { defaultTa
 
       {/* Collect Partial Payment Modal */}
       {payingInvoice && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 no-print">
           <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-blue-600" />

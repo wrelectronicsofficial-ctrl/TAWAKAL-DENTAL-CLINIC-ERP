@@ -201,9 +201,9 @@ function WorkspaceShell() {
         </header>
 
         {/* Main Viewport */}
-        <main className="flex-1 p-6 max-w-[1440px] w-full mx-auto">
+        <main className="flex-1 p-6 max-w-[1440px] w-full mx-auto print-main">
           {dataError && (
-            <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2 text-xs text-red-700">
+            <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2 text-xs text-red-700 no-print">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{dataError}</span>
             </div>

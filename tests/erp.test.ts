@@ -420,6 +420,137 @@ async function runAsyncExcelTests() {
     srcWalk(path.join(root, 'src'));
   });
 
+  // 14. Firebase Configuration & Auth Persistence Verification
+  await runTest('Verify Firebase config completeness, persistence, and zero VITE_FIREBASE placeholder overrides', () => {
+    const root = process.cwd();
+    const fbConfig = JSON.parse(fs.readFileSync(path.join(root, 'firebase-applet-config.json'), 'utf-8')) as Record<string, string>;
+    assert.ok(fbConfig.projectId && fbConfig.projectId !== 'remixed-project-id', 'Valid Firebase projectId required');
+    assert.ok(fbConfig.appId && fbConfig.appId.includes(':web:'), 'Valid Firebase Web appId required');
+    assert.ok(fbConfig.apiKey && fbConfig.apiKey.startsWith('AIza'), 'Valid Firebase Web apiKey required');
+    assert.ok(fbConfig.authDomain && fbConfig.authDomain.endsWith('.firebaseapp.com'), 'Valid Firebase authDomain required');
+    assert.ok(fbConfig.firestoreDatabaseId, 'Named Firestore database ID required');
+
+    const fbTs = fs.readFileSync(path.join(root, 'src/lib/firebase.ts'), 'utf-8');
+    assert.ok(fbTs.includes('browserLocalPersistence'), 'Auth persistence must be configured');
+    assert.ok(fbTs.includes('getDocFromServer'), 'Firestore server connection check required');
+  });
+
+  // 15. Daily Appointment Bulk Excel Export, Microsoft Graph Routes & A4 Print Utility Verification
+  await runTest('Export daily appointments to Excel with chronological sort & RBAC, and verify A4 print CSS + Graph routes', async () => {
+    assert.doesNotThrow(() => assertExcelExportAuthorized('receptionist', 'daily_appointments'));
+    assert.doesNotThrow(() => assertExcelExportAuthorized('dentist', 'daily_appointments'));
+    assert.throws(() => assertExcelExportAuthorized('accountant', 'daily_appointments'), /Unauthorized Excel export/);
+    assert.throws(() => assertExcelExportAuthorized('call_agent', 'daily_appointments'), /Unauthorized Excel export/);
+
+    const sampleAppointments: Appointment[] = [
+      {
+        id: 'apt_late',
+        appointmentCode: 'APT-002',
+        patientId: 'p2',
+        patientName: 'Ayesha Khan',
+        doctorId: 'doc_1',
+        doctorName: 'Dr. Usama Tariq',
+        chairNumber: 'Chair 2',
+        date: '2026-11-13',
+        startTime: '14:30',
+        endTime: '15:00',
+        serviceName: 'Root Canal Therapy',
+        priority: 'emergency',
+        status: 'Confirmed',
+        source: 'Phone',
+        queueToken: 'T-02',
+        notes: 'Acute pain',
+        createdAt: '2026-11-13T08:00:00Z',
+      },
+      {
+        id: 'apt_early',
+        appointmentCode: 'APT-001',
+        patientId: 'p1',
+        patientName: 'Zainab Ali',
+        doctorId: 'doc_1',
+        doctorName: 'Dr. Usama Tariq',
+        chairNumber: 'Chair 1',
+        date: '2026-11-13',
+        startTime: '09:15',
+        endTime: '09:45',
+        serviceName: 'Scaling & Polishing',
+        priority: 'normal',
+        status: 'Completed',
+        source: 'Reception',
+        queueToken: 'T-01',
+        createdAt: '2026-11-13T07:30:00Z',
+      },
+      {
+        id: 'apt_other_day',
+        appointmentCode: 'APT-003',
+        patientId: 'p3',
+        patientName: 'Hamza Raza',
+        doctorId: 'doc_1',
+        doctorName: 'Dr. Usama Tariq',
+        chairNumber: 'Chair 1',
+        date: '2026-11-14',
+        startTime: '10:00',
+        endTime: '10:30',
+        serviceName: 'Consultation',
+        priority: 'normal',
+        status: 'Confirmed',
+        source: 'Portal',
+        createdAt: '2026-11-13T08:15:00Z',
+      },
+    ];
+
+    const exportedDaily = await buildDomainExcelWorkbook(
+      'daily_appointments',
+      {
+        clinicName: 'Tawakal Dental Clinic',
+        environment: 'PRODUCTION',
+        targetDate: '2026-11-13',
+        doctorFilterLabel: 'Dr. Usama Tariq',
+        patients: [],
+        appointments: sampleAppointments as unknown as Record<string, unknown>[],
+        staff: [],
+        services: [],
+        treatmentPlans: [],
+        invoices: [],
+        journals: [],
+        budgets: [],
+        inventory: [],
+        sterilizationLogs: [],
+        callRecords: [],
+      },
+      { email: 'reception@tawakal.pk', role: 'receptionist' }
+    );
+
+    assert.equal(exportedDaily.filename, 'Tawakal_Dental_daily_appointments_PRODUCTION_2026-11-13.xlsx');
+    assert.equal(exportedDaily.sheetSummary['Daily Appointments'], 2);
+
+    const wbDaily = new ExcelJS.Workbook();
+    await wbDaily.xlsx.load(exportedDaily.buffer as unknown as ArrayBuffer);
+    assert.ok(wbDaily.getWorksheet('Export Summary'));
+    const wsDaily = wbDaily.getWorksheet('Daily Appointments');
+    assert.ok(wsDaily, 'Daily Appointments worksheet must exist');
+    assert.equal(wsDaily.getRow(2).getCell(1).value, 'APT-001');
+    assert.equal(wsDaily.getRow(2).getCell(3).value, '09:15');
+    assert.equal(wsDaily.getRow(3).getCell(1).value, 'APT-002');
+    assert.equal(wsDaily.getRow(3).getCell(3).value, '14:30');
+
+    const root = process.cwd();
+    const indexCss = fs.readFileSync(path.join(root, 'src/index.css'), 'utf-8');
+    assert.ok(indexCss.includes('@page'), 'A4 @page print rule required');
+    assert.ok(indexCss.includes('A4'), 'A4 page size required in @page');
+    assert.ok(indexCss.includes('.no-print'), '.no-print utility required');
+    assert.ok(indexCss.includes('.print-hide'), '.print-hide utility required');
+    assert.ok(indexCss.includes('.print-only'), '.print-only utility required');
+    assert.ok(indexCss.includes('.print-a4-sheet'), '.print-a4-sheet utility required');
+
+    const sidebarTsx = fs.readFileSync(path.join(root, 'src/components/Sidebar.tsx'), 'utf-8');
+    assert.ok(sidebarTsx.includes('no-print'), 'Sidebar must include no-print class');
+
+    const serverTs = fs.readFileSync(path.join(root, 'server.ts'), 'utf-8');
+    assert.ok(serverTs.includes('/api/microsoft/status'), 'Microsoft Graph status route required');
+    assert.ok(serverTs.includes('/api/microsoft/excel/export-daily-appointments'), 'Microsoft Graph daily appointments export route required');
+  });
+
   console.log(`\nTest Summary: ${passed} passed, ${failed} failed.`);
   if (failed > 0) {
     process.exit(1);

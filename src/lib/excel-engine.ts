@@ -5,12 +5,15 @@ import { UserRole } from '../types/erp';
 export type ExcelExportDomain =
   | 'patients_clinical'
   | 'appointments_ops'
+  | 'daily_appointments'
   | 'financial_ledger'
   | 'management_ai';
 
 export interface ExcelExportSnapshot {
   clinicName: string;
   environment: 'PRODUCTION' | 'DEMO';
+  targetDate?: string;
+  doctorFilterLabel?: string;
   patients: Record<string, unknown>[];
   appointments: Record<string, unknown>[];
   staff: Record<string, unknown>[];
@@ -83,6 +86,12 @@ export function assertExcelExportAuthorized(role: UserRole, domain: ExcelExportD
   }
   if (domain === 'appointments_ops' && !['owner', 'admin', 'manager', 'dentist', 'inventory_manager'].includes(role)) {
     throw new Error(`Unauthorized Excel export: role '${role}' lacks operations export permission.`);
+  }
+  if (
+    domain === 'daily_appointments' &&
+    !['owner', 'admin', 'manager', 'dentist', 'assistant', 'receptionist'].includes(role)
+  ) {
+    throw new Error(`Unauthorized Excel export: role '${role}' lacks appointment schedule export permission.`);
   }
 }
 
@@ -253,6 +262,70 @@ export async function buildDomainExcelWorkbook(
     sheetSummary['Sterilization Logs'] = snapshot.sterilizationLogs.length;
   }
 
+  if (domain === 'daily_appointments') {
+    const safeTargetDate = snapshot.targetDate?.trim();
+    const filteredAppointments = (safeTargetDate
+      ? snapshot.appointments.filter((a) => String(a.date || '') === safeTargetDate)
+      : snapshot.appointments
+    )
+      .slice()
+      .sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')));
+
+    if (safeTargetDate) {
+      summarySheet.addRow({ param: 'Schedule Date', val: safeTargetDate });
+    }
+    if (snapshot.doctorFilterLabel) {
+      summarySheet.addRow({ param: 'Dentist Filter', val: snapshot.doctorFilterLabel });
+    }
+    const emergencyCount = filteredAppointments.filter((a) => a.priority === 'emergency').length;
+    const completedCount = filteredAppointments.filter((a) => a.status === 'Completed').length;
+    const activeCount = filteredAppointments.filter((a) =>
+      ['Confirmed', 'Checked In', 'Waiting', 'Seated', 'In Treatment'].includes(String(a.status || ''))
+    ).length;
+    summarySheet.addRow({ param: 'Total Appointments', val: filteredAppointments.length });
+    summarySheet.addRow({ param: 'Active / Scheduled', val: activeCount });
+    summarySheet.addRow({ param: 'Completed', val: completedCount });
+    summarySheet.addRow({ param: 'Emergency Priority Cases', val: emergencyCount });
+
+    const dailySheet = wb.addWorksheet('Daily Appointments');
+    dailySheet.columns = [
+      { header: 'Appointment Code', key: 'appointmentCode', width: 16 },
+      { header: 'Date', key: 'date', width: 13 },
+      { header: 'Start Time', key: 'startTime', width: 12 },
+      { header: 'End Time', key: 'endTime', width: 12 },
+      { header: 'Queue Token', key: 'queueToken', width: 13 },
+      { header: 'Patient ID', key: 'patientId', width: 20 },
+      { header: 'Patient Name', key: 'patientName', width: 26 },
+      { header: 'Dentist', key: 'doctorName', width: 24 },
+      { header: 'Chair / Operatory', key: 'chairNumber', width: 16 },
+      { header: 'Procedure / Service', key: 'serviceName', width: 26 },
+      { header: 'Priority', key: 'priority', width: 13 },
+      { header: 'Booking Source', key: 'source', width: 18 },
+      { header: 'Status', key: 'status', width: 18 },
+      { header: 'Notes', key: 'notes', width: 32 },
+    ];
+    filteredAppointments.forEach((a) =>
+      dailySheet.addRow({
+        appointmentCode: a.appointmentCode || '',
+        date: a.date || safeTargetDate || '',
+        startTime: a.startTime || '',
+        endTime: a.endTime || '',
+        queueToken: a.queueToken || '—',
+        patientId: a.patientId || '',
+        patientName: a.patientName || 'Patient',
+        doctorName: a.doctorName || 'Dentist',
+        chairNumber: a.chairNumber || 'Unassigned',
+        serviceName: a.serviceName || 'Consultation',
+        priority: a.priority === 'emergency' ? 'Emergency' : 'Routine',
+        source: a.source || 'Reception',
+        status: a.status || 'Confirmed',
+        notes: a.notes || '',
+      })
+    );
+    styleSheetHeader(dailySheet);
+    sheetSummary['Daily Appointments'] = filteredAppointments.length;
+  }
+
   if (domain === 'financial_ledger') {
     const invSheet = wb.addWorksheet('Invoices');
     invSheet.columns = [
@@ -364,7 +437,11 @@ export async function buildDomainExcelWorkbook(
 
   const rawArrayBuffer = await wb.xlsx.writeBuffer();
   const buffer = Buffer.from(rawArrayBuffer);
-  const datePart = new Date().toISOString().slice(0, 10);
+  const rawDatePart =
+    domain === 'daily_appointments' && snapshot.targetDate
+      ? snapshot.targetDate.replace(/[^0-9-]/g, '').slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+  const datePart = rawDatePart || new Date().toISOString().slice(0, 10);
   const filename = `Tawakal_Dental_${domain}_${snapshot.environment}_${datePart}.xlsx`;
 
   return { buffer, filename, sheetSummary };

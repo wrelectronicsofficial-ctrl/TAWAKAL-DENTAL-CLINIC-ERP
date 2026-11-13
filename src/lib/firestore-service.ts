@@ -89,7 +89,7 @@ export async function ensureUserAccount(fbUser: User): Promise<UserAccount> {
   }
 }
 
-export async function ensureOrganizationConfig(orgId: string): Promise<OrganizationConfig> {
+export async function ensureOrganizationConfig(orgId: string, canInitialize = false): Promise<OrganizationConfig> {
   const path = `organizations/${orgId}`;
   const ref = doc(db, 'organizations', orgId);
   try {
@@ -116,7 +116,9 @@ export async function ensureOrganizationConfig(orgId: string): Promise<Organizat
       updatedAt: new Date().toISOString(),
     };
 
-    await setDoc(ref, initial);
+    if (canInitialize) {
+      await setDoc(ref, initial);
+    }
     return initial;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);

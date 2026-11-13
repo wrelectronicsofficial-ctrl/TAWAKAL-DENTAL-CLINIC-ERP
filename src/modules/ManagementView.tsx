@@ -11,6 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
+import { PrintLetterhead } from '../components/PrintLetterhead';
 import {
   DEMO_ORG_ID,
   exportOrganizationSnapshot,
@@ -178,8 +179,20 @@ export function ManagementView({
     const totalExpenses = journals.filter((j) => j.voucherType === 'Expense').reduce((s, j) => s + j.totalDebit, 0);
 
     return (
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="space-y-6 print-a4-sheet">
+        <PrintLetterhead
+          clinicConfig={orgConfig}
+          documentTitle="Executive Financial & Clinic Intelligence Report"
+          preparedBy={userAccount?.displayName}
+          metadataPairs={[
+            { label: 'Billed', value: formatPKR(totalBilled) },
+            { label: 'Collected', value: formatPKR(totalCollected) },
+            { label: 'Receivables', value: formatPKR(totalOutstanding) },
+            { label: 'Expenses', value: formatPKR(totalExpenses) },
+          ]}
+        />
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Reports &amp; Clinic Intelligence</h1>
             <p className="text-sm text-slate-500">Database-reconciled financial, clinical, appointment, and AI call exports</p>
@@ -191,7 +204,7 @@ export function ManagementView({
               className="px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print Summary</span>
+              <span>Print Summary (A4)</span>
             </button>
             <button
               type="button"
@@ -210,7 +223,7 @@ export function ManagementView({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print-avoid-break">
           <div className="bg-white border border-slate-200 rounded-xl p-4">
             <p className="text-xs text-slate-500">Total Billed Revenue</p>
             <p className="text-xl font-semibold text-slate-900 font-mono tabular-nums mt-1">{formatPKR(totalBilled)}</p>
@@ -229,7 +242,7 @@ export function ManagementView({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs print-avoid-break">
           <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-2">
             <div className="flex items-center gap-2 font-semibold text-slate-900">
               <BarChart3 className="w-4 h-4 text-blue-600" />
@@ -245,7 +258,7 @@ export function ManagementView({
                   appointments.map((a) => [a.appointmentCode, a.date, a.startTime, a.patientName || '', a.doctorName || '', a.serviceName || '', a.status])
                 )
               }
-              className="text-blue-600 font-medium hover:underline cursor-pointer"
+              className="text-blue-600 font-medium hover:underline cursor-pointer no-print"
             >
               Download Appointments CSV
             </button>
@@ -266,7 +279,7 @@ export function ManagementView({
                   inventory.map((i) => [i.sku, i.name, i.category, i.currentStock, i.minStock, i.unit, i.expiryDate || ''])
                 )
               }
-              className="text-blue-600 font-medium hover:underline cursor-pointer"
+              className="text-blue-600 font-medium hover:underline cursor-pointer no-print"
             >
               Download Inventory CSV
             </button>
@@ -287,7 +300,7 @@ export function ManagementView({
                   callRecords.map((c) => [c.callCode, c.direction, c.callerNumber, c.language || '', c.intent || '', c.outcome, String(c.emergencyFlag)])
                 )
               }
-              className="text-blue-600 font-medium hover:underline cursor-pointer"
+              className="text-blue-600 font-medium hover:underline cursor-pointer no-print"
             >
               Download AI Call Logs CSV
             </button>

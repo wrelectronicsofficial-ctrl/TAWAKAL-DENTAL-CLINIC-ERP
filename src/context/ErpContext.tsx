@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   onAuthStateChanged,
+  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -79,6 +80,7 @@ interface ErpContextValue {
   signInGoogle: () => Promise<void>;
   signInEmail: (email: string, password: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  resendVerificationEmail: () => Promise<void>;
   logout: () => Promise<void>;
   switchEnvironment: (targetOrgId: string) => Promise<void>;
   loadDemoData: () => Promise<void>;
@@ -119,12 +121,49 @@ export function ErpProvider({ children }: { children: React.ReactNode }) {
   const [excelImports, setExcelImports] = useState<ExcelImportRecord[]>([]);
   const [documentRefs, setDocumentRefs] = useState<DocumentRef[]>([]);
 
+  const clearClinicState = () => {
+    setUserAccount(null);
+    setOrgConfig(null);
+    setActiveOrgId(PROD_ORG_ID);
+    setActiveModule('dashboard');
+    setSelectedPatientId(null);
+    setDataError(null);
+    setStaff([]);
+    setPatients([]);
+    setServices([]);
+    setAppointments([]);
+    setClinicalNotes([]);
+    setTreatmentPlans([]);
+    setInvoices([]);
+    setJournals([]);
+    setBudgets([]);
+    setInventory([]);
+    setSterilizationLogs([]);
+    setCallRecords([]);
+    setLabCases([]);
+    setAuditLogs([]);
+    setBackups([]);
+    setSyncJobs([]);
+    setIntegrationConfigs([]);
+    setRestoreRuns([]);
+    setExcelImports([]);
+    setDocumentRefs([]);
+  };
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
       setAuthError(null);
       if (!user) {
+        clearClinicState();
+        setAuthLoading(false);
+        return;
+      }
+      if (!user.emailVerified) {
         setUserAccount(null);
+        setAuthError(
+          `Your email (${user.email || 'account'}) is not verified yet. Verify your email address and sign in again to access clinic records.`
+        );
         setAuthLoading(false);
         return;
       }
@@ -133,9 +172,16 @@ export function ErpProvider({ children }: { children: React.ReactNode }) {
         setUserAccount(account);
         const initialOrg = account.orgId === PROD_ORG_ID ? PROD_ORG_ID : DEMO_ORG_ID;
         setActiveOrgId(initialOrg);
-        await ensureOrganizationConfig(initialOrg);
+        const isAdminRole = account.role === 'owner' || account.role === 'admin';
+        await ensureOrganizationConfig(initialOrg, isAdminRole);
       } catch (err) {
-        setAuthError(err instanceof Error ? err.message : 'Failed to initialize clinic account.');
+        const raw = err instanceof Error ? err.message : 'Failed to initialize clinic account.';
+        try {
+          const parsed = JSON.parse(raw) as { error?: string; operationType?: string; path?: string };
+          setAuthError(parsed.error ? `Clinic database initialization blocked (${parsed.error})` : raw);
+        } catch {
+          setAuthError(raw);
+        }
       } finally {
         setAuthLoading(false);
       }
@@ -264,6 +310,13 @@ export function ErpProvider({ children }: { children: React.ReactNode }) {
         setAuthError(
           'Email/Password provider is not enabled yet in Firebase Console (Authentication → Sign-in method). Please use Google Sign-In or enable Email/Password in Firebase Console.'
         );
+      } else if (msg.includes('invalid-credential') || msg.includes('wrong-password') || msg.includes('user-not-found')) {
+        setAuthError('Invalid clinic email or password.');
+      } else if (msg.includes('too-many-requests')) {
+        setAuthError('Too many failed sign-in attempts. Please wait a moment or reset your password.');
+      } else if (msg.includes('unauthorized-domain')) {
+        const host = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+        setAuthError(`Domain "${host}" is not authorized in Firebase Authentication Settings.`);
       } else {
         setAuthError(msg);
       }
@@ -279,15 +332,27 @@ export function ErpProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const resendVerificationEmail = async () => {
+    setAuthError(null);
+    if (!auth.currentUser) return;
+    try {
+      await sendEmailVerification(auth.currentUser);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Failed to send verification email.');
+    }
+  };
+
   const logout = async () => {
     await signOut(auth);
+    clearClinicState();
   };
 
   const switchEnvironment = async (targetOrgId: string) => {
     if (targetOrgId === PROD_ORG_ID && userAccount?.orgId !== PROD_ORG_ID) {
       throw new Error('Production clinic access requires Clinic Owner authorization.');
     }
-    await ensureOrganizationConfig(targetOrgId);
+    const isAdminRole = userAccount?.role === 'owner' || userAccount?.role === 'admin';
+    await ensureOrganizationConfig(targetOrgId, isAdminRole);
     setSelectedPatientId(null);
     setActiveOrgId(targetOrgId);
   };
@@ -344,6 +409,7 @@ export function ErpProvider({ children }: { children: React.ReactNode }) {
       signInGoogle,
       signInEmail,
       resetPassword,
+      resendVerificationEmail,
       logout,
       switchEnvironment,
       loadDemoData,

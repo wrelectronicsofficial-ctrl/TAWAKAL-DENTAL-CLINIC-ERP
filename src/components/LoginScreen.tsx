@@ -3,11 +3,12 @@ import { ShieldCheck, Lock, Mail, KeyRound, AlertCircle, CheckCircle2 } from 'lu
 import { useErp } from '../context/ErpContext';
 
 export function LoginScreen() {
-  const { signInGoogle, signInEmail, resetPassword, authError } = useErp();
+  const { firebaseUser, signInGoogle, signInEmail, resetPassword, resendVerificationEmail, logout, authError } = useErp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +85,37 @@ export function LoginScreen() {
             {authError && (
               <div className="mb-5 p-3.5 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2.5 text-sm text-red-800">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" />
-                <span>{authError}</span>
+                <div className="space-y-2 flex-1">
+                  <p>{authError}</p>
+                  {firebaseUser && !firebaseUser.emailVerified && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await resendVerificationEmail();
+                          setVerificationSent(true);
+                        }}
+                        className="px-2.5 py-1 text-xs font-medium bg-red-700 text-white rounded cursor-pointer"
+                      >
+                        Resend Verification Email
+                      </button>
+                      <button
+                        type="button"
+                        onClick={logout}
+                        className="px-2.5 py-1 text-xs font-medium bg-white border border-red-300 text-red-800 rounded cursor-pointer"
+                      >
+                        Sign Out
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {verificationSent && (
+              <div className="mb-5 p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-start gap-2.5 text-sm text-emerald-800">
+                <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
+                <span>Verification link sent to {firebaseUser?.email}. Verify and reload or sign in again.</span>
               </div>
             )}
 

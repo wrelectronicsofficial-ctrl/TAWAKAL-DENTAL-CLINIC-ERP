@@ -22,8 +22,102 @@
   }
 }
 
+.print-only {
+  display: none;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 12mm 14mm;
+}
+
 @media print {
-  .no-print {
+  html,
+  body {
+    width: 210mm;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 10pt;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print,
+  .print-hide,
+  aside,
+  nav {
     display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .print-a4-sheet {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .print-full-width {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  .print-avoid-break,
+  .print-a4-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .print-expand,
+  .overflow-x-auto,
+  .overflow-y-auto {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 9pt !important;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  th,
+  td {
+    border-color: #cbd5e1 !important;
+    padding: 5px 8px !important;
+  }
+
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
   }
 }

@@ -555,10 +555,33 @@ app.post('/api/wordpress/upload-backup', requireFirebaseAuth, requireOwnerOrAdmi
 // -----------------------------------------------------------------------------
 // Microsoft Graph OAuth 2.0 & Excel Online Sync
 // -----------------------------------------------------------------------------
-app.get('/api/microsoft/auth/url', requireFirebaseAuth, requireOwnerOrAdmin, (req: AuthRequest, res: Response) => {
-  const clientId = process.env.MS_CLIENT_ID?.trim();
+function canExportDailyAppointments(role?: string): boolean {
+  return Boolean(role && ['owner', 'admin', 'manager', 'dentist', 'assistant', 'receptionist'].includes(role));
+}
+
+app.get('/api/microsoft/status', requireFirebaseAuth, (req: AuthRequest, res: Response) => {
+  const clientId = process.env.MS_CLIENT_ID?.trim() || '';
+  const clientSecret = process.env.MS_CLIENT_SECRET?.trim() || '';
   const tenant = process.env.MS_TENANT_ID?.trim() || 'common';
-  if (!clientId) {
+  const tokenRec = req.user ? msTokenStore.get(req.user.uid) : undefined;
+  const oauthConnected = Boolean(tokenRec && tokenRec.expiresAt > Date.now());
+  return res.json({
+    configured: Boolean(clientId && clientSecret),
+    oauthConnected,
+    tenantConfigured: Boolean(process.env.MS_TENANT_ID?.trim()),
+    tenant,
+    callbackUrl: `${getAppUrl()}/api/microsoft/auth/callback`,
+  });
+});
+
+app.get('/api/microsoft/auth/url', requireFirebaseAuth, (req: AuthRequest, res: Response) => {
+  if (!canExportDailyAppointments(req.userRole)) {
+    return res.status(403).json({ error: 'Forbidden: Clinic role not authorized for Microsoft Graph export.' });
+  }
+  const clientId = process.env.MS_CLIENT_ID?.trim();
+  const clientSecret = process.env.MS_CLIENT_SECRET?.trim();
+  const tenant = process.env.MS_TENANT_ID?.trim() || 'common';
+  if (!clientId || !clientSecret) {
     return res.status(503).json({
       error: 'Microsoft Graph OAuth is not configured (MS_CLIENT_ID / MS_CLIENT_SECRET missing).',
       callbackUrl: `${getAppUrl()}/api/microsoft/auth/callback`,
@@ -650,6 +673,101 @@ app.post('/api/microsoft/test', requireFirebaseAuth, requireOwnerOrAdmin, async 
     return res.json({ connected: true, driveType: (driveData as { driveType?: string }).driveType });
   } catch (err) {
     return res.status(502).json({ connected: false, error: err instanceof Error ? err.message : 'Graph check failed' });
+  }
+});
+
+app.post('/api/microsoft/excel/export-daily-appointments', requireFirebaseAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const role = req.userRole || 'receptionist';
+    assertExcelExportAuthorized(role, 'daily_appointments');
+
+    const { snapshot, folderName = 'TawakalDentalERP/DailyAppointments' } = req.body || {};
+    if (!snapshot || !Array.isArray(snapshot.appointments)) {
+      return res.status(400).json({ error: 'Valid daily appointment snapshot is required.' });
+    }
+
+    const { buffer, filename, sheetSummary } = await buildDomainExcelWorkbook(
+      'daily_appointments',
+      snapshot,
+      { email: req.user?.email || 'staff', role }
+    );
+
+    const clientId = process.env.MS_CLIENT_ID?.trim();
+    const clientSecret = process.env.MS_CLIENT_SECRET?.trim();
+    if (!clientId || !clientSecret) {
+      return res.status(503).json({
+        synced: false,
+        configured: false,
+        authRequired: false,
+        filename,
+        sheetSummary,
+        error: 'Microsoft Graph environment variables (MS_CLIENT_ID / MS_CLIENT_SECRET) are not configured on the server.',
+      });
+    }
+
+    const tokenRec = req.user ? msTokenStore.get(req.user.uid) : undefined;
+    if (!tokenRec || tokenRec.expiresAt < Date.now()) {
+      return res.status(401).json({
+        synced: false,
+        configured: true,
+        authRequired: true,
+        filename,
+        sheetSummary,
+        error: 'Microsoft Graph OAuth token not connected or expired. Connect your Microsoft account to sync to OneDrive.',
+      });
+    }
+
+    const safeFolder = String(folderName)
+      .split('/')
+      .map((seg) => seg.replace(/[^a-zA-Z0-9_-]/g, '_'))
+      .filter(Boolean)
+      .join('/') || 'TawakalDentalERP';
+    const drivePath = `${safeFolder}/${filename}`;
+    const graphEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root:/${encodeURI(drivePath)}:/content`;
+
+    const graphResp = await fetch(graphEndpoint, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${tokenRec.accessToken}`,
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      },
+      body: new Uint8Array(buffer),
+    });
+
+    const graphJson = (await graphResp.json().catch(() => ({}))) as {
+      id?: string;
+      name?: string;
+      webUrl?: string;
+      size?: number;
+      error?: { message?: string };
+    };
+
+    if (!graphResp.ok) {
+      return res.status(502).json({
+        synced: false,
+        configured: true,
+        authRequired: graphResp.status === 401,
+        filename,
+        sheetSummary,
+        error: graphJson.error?.message || `Microsoft Graph upload failed (HTTP ${graphResp.status}).`,
+      });
+    }
+
+    return res.json({
+      synced: true,
+      filename,
+      drivePath,
+      sheetSummary,
+      driveItem: {
+        id: graphJson.id || null,
+        name: graphJson.name || filename,
+        webUrl: graphJson.webUrl || null,
+        size: graphJson.size || buffer.length,
+      },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Daily appointment OneDrive export failed.';
+    return res.status(msg.includes('Unauthorized') ? 403 : 500).json({ synced: false, error: msg });
   }
 });
 

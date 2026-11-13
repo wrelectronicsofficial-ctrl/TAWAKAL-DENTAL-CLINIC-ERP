@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle2, ClipboardCheck, FlaskConical, Lock, Plus, Printer } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
+import { PrintLetterhead } from '../components/PrintLetterhead';
 import { generateRecordId, saveSubdoc } from '../lib/firestore-service';
 import { canPerformClinicalAction } from '../lib/rbac';
 import { formatPKR } from '../lib/erp-engine';
@@ -10,6 +11,7 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
   const {
     activeOrgId,
     userAccount,
+    orgConfig,
     patients,
     staff,
     services,
@@ -248,9 +250,23 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
     );
   };
 
+  const printDocTitle =
+    tab === 'notes'
+      ? 'Clinical Examination & Prescription (Rx)'
+      : tab === 'plans'
+      ? 'Phased Dental Treatment Plan'
+      : 'Dental Laboratory Case Tracker';
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 print-a4-sheet">
+      <PrintLetterhead
+        clinicConfig={orgConfig}
+        documentTitle={printDocTitle}
+        patient={activePatient}
+        preparedBy={userAccount?.displayName}
+      />
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Clinical Documentation &amp; Treatment Planning</h1>
           <p className="text-sm text-slate-500">Dentist-approved examinations, prescriptions, phased plans, and dental lab cases</p>
@@ -302,11 +318,11 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
         </div>
       )}
 
-      {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 no-print">{error}</div>}
 
       {tab === 'notes' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-6 bg-white border border-slate-200 rounded-xl p-5">
+          <div className="lg:col-span-6 bg-white border border-slate-200 rounded-xl p-5 no-print">
             <h3 className="text-sm font-semibold text-slate-900 mb-3">Sign Clinical Examination / Prescription</h3>
             {!canApproveClinical ? (
               <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
@@ -387,11 +403,11 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
             )}
           </div>
 
-          <div className="lg:col-span-6 bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+          <div className="lg:col-span-6 bg-white border border-slate-200 rounded-xl p-5 space-y-3 print-full-width print-a4-sheet">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-900">Signed Clinical History</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Signed Clinical History &amp; Prescriptions (Rx)</h3>
               <button type="button" onClick={() => window.print()} className="text-xs text-blue-600 flex items-center gap-1 cursor-pointer no-print">
-                <Printer className="w-3.5 h-3.5" /> Print Rx
+                <Printer className="w-3.5 h-3.5" /> Print Rx (A4)
               </button>
             </div>
             {clinicalNotes.filter((n) => n.patientId === activePatientId).length === 0 ? (
@@ -402,7 +418,7 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
                 .map((note) => {
                   const rx: PrescriptionLine[] = note.prescriptionJson ? JSON.parse(note.prescriptionJson) : [];
                   return (
-                    <div key={note.id} className="p-3.5 rounded-lg border border-slate-200 space-y-1.5 text-xs">
+                    <div key={note.id} className="p-3.5 rounded-lg border border-slate-200 space-y-1.5 text-xs print-avoid-break">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-900 capitalize">{note.noteType}</span>
                         <span className="text-[11px] text-slate-500 font-mono">
@@ -432,7 +448,7 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
 
       {tab === 'plans' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5">
+          <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5 no-print">
             <h3 className="text-sm font-semibold text-slate-900 mb-3">Create Phased Treatment Plan</h3>
             <form onSubmit={handleSavePlan} className="space-y-3 text-xs">
               <input value={planTitle} onChange={(e) => setPlanTitle(e.target.value)} placeholder="Plan Title (e.g. #16 RCT & Crown Rehabilitation)" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
@@ -490,8 +506,13 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
             </form>
           </div>
 
-          <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-slate-900">Patient Treatment Plans</h3>
+          <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-5 space-y-3 print-full-width print-a4-sheet">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-900">Patient Treatment Plans</h3>
+              <button type="button" onClick={() => window.print()} className="text-xs text-blue-600 flex items-center gap-1 cursor-pointer no-print">
+                <Printer className="w-3.5 h-3.5" /> Print Plan (A4)
+              </button>
+            </div>
             {treatmentPlans.filter((t) => t.patientId === activePatientId).length === 0 ? (
               <div className="py-10 text-center text-xs text-slate-500">
                 <ClipboardCheck className="w-7 h-7 text-slate-300 mx-auto mb-2" />
@@ -503,7 +524,7 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
                 .map((tp) => {
                   const items: TreatmentPlanItem[] = tp.itemsJson ? JSON.parse(tp.itemsJson) : [];
                   return (
-                    <div key={tp.id} className="p-4 rounded-lg border border-slate-200 space-y-2 text-xs">
+                    <div key={tp.id} className="p-4 rounded-lg border border-slate-200 space-y-2 text-xs print-avoid-break">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-semibold text-slate-900">{tp.title}</p>
@@ -529,7 +550,7 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
 
       {tab === 'lab' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5">
+          <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5 no-print">
             <h3 className="text-sm font-semibold text-slate-900 mb-3">New Crown / Prosthetic Lab Case</h3>
             <form onSubmit={handleCreateLabCase} className="space-y-3 text-xs">
               <input required value={labName} onChange={(e) => setLabName(e.target.value)} placeholder="Laboratory Name *" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
@@ -554,10 +575,15 @@ export function ClinicalRecordsView({ defaultTab = 'notes' }: { defaultTab?: 'no
             </form>
           </div>
 
-          <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-slate-200 flex items-center gap-2">
-              <FlaskConical className="w-4 h-4 text-teal-600" />
-              <h3 className="text-sm font-semibold text-slate-900">Dental Laboratory Case Tracker</h3>
+          <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl overflow-hidden print-full-width print-a4-sheet">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FlaskConical className="w-4 h-4 text-teal-600" />
+                <h3 className="text-sm font-semibold text-slate-900">Dental Laboratory Case Tracker</h3>
+              </div>
+              <button type="button" onClick={() => window.print()} className="text-xs text-blue-600 flex items-center gap-1 cursor-pointer no-print">
+                <Printer className="w-3.5 h-3.5" /> Print Lab Sheet (A4)
+              </button>
             </div>
             {labCases.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-500">No laboratory cases recorded yet.</div>

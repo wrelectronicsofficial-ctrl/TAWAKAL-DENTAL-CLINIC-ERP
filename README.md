@@ -51,7 +51,7 @@ npm run build:prod   # Builds client dist/ and Node server dist-server/server.mj
 2. **`.github/workflows/deploy-cloudrun.yml`** (Production Full-Stack Deployment):
    - Triggers on push to `main` or `workflow_dispatch`.
    - Runs all quality checks and `npm run build:prod`.
-   - When repository variable `GCP_CLOUDRUN_ENABLED=true` and Workload Identity Federation secrets (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `GCP_REGION`) are configured, builds and deploys the full-stack service to Cloud Run.
+   - When repository variable `GCP_CLOUDRUN_ENABLED=true`, optional variable `GCP_REGION` (default `asia-southeast1`), and Workload Identity Federation secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`) are configured, builds and deploys the full-stack service to Cloud Run.
 
 ---
 

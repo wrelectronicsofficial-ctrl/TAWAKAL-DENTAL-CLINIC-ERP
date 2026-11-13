@@ -1,7 +1,21 @@
-import React, { useMemo, useState } from 'react';
-import { AlertCircle, Calendar as CalendarIcon, Clock, Plus, ShieldAlert, UserCheck, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  Clock,
+  CloudUpload,
+  FileSpreadsheet,
+  Plus,
+  Printer,
+  ShieldAlert,
+  UserCheck,
+  X,
+} from 'lucide-react';
 import { useErp } from '../context/ErpContext';
-import { createAppointmentSafely, saveSubdoc } from '../lib/firestore-service';
+import { PrintLetterhead } from '../components/PrintLetterhead';
+import { apiUrl, readJsonSafe } from '../lib/api-client';
+import { createAppointmentSafely, saveSubdoc, writeAuditLog } from '../lib/firestore-service';
 import { checkAppointmentConflict, computeAvailableSlots, minutesToTime, timeToMinutes } from '../lib/erp-engine';
 import { Appointment, AppointmentStatus } from '../types/erp';
 
@@ -17,6 +31,7 @@ const STATUS_ACTIONS: { label: string; next: AppointmentStatus }[] = [
 export function AppointmentsView({ defaultMode = 'calendar' }: { defaultMode?: 'calendar' | 'queue' }) {
   const {
     activeOrgId,
+    isDemoMode,
     userAccount,
     orgConfig,
     patients,
@@ -25,6 +40,7 @@ export function AppointmentsView({ defaultMode = 'calendar' }: { defaultMode?: '
     appointments,
     setSelectedPatientId,
     setActiveModule,
+    getIdToken,
   } = useErp();
 
   const [mode, setMode] = useState<'calendar' | 'queue'>(defaultMode);
@@ -33,6 +49,9 @@ export function AppointmentsView({ defaultMode = 'calendar' }: { defaultMode?: '
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState<'xlsx' | 'graph' | 'oauth' | null>(null);
+  const [exportNotice, setExportNotice] = useState<{ text: string; webUrl?: string | null } | null>(null);
+  const [msStatus, setMsStatus] = useState<{ configured: boolean; oauthConnected: boolean } | null>(null);
 
   const doctors = staff.filter((s) => s.role === 'dentist' && s.isActive);
   const chairsCount = orgConfig?.chairsCount && orgConfig.chairsCount > 0 ? orgConfig.chairsCount : 2;
@@ -175,9 +194,208 @@ export function AppointmentsView({ defaultMode = 'calendar' }: { defaultMode?: '
     );
   };
 
+  const refreshMsStatus = async () => {
+    if (!userAccount) return;
+    try {
+      const token = await getIdToken();
+      const res = await fetch(apiUrl('/api/microsoft/status'), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Clinic-Role': userAccount.role,
+        },
+      });
+      if (res.ok) {
+        const data = await readJsonSafe<{ configured: boolean; oauthConnected: boolean }>(res);
+        setMsStatus(data);
+      }
+    } catch {
+      // Static hosting or server unavailable; handled explicitly if user clicks export
+    }
+  };
+
+  useEffect(() => {
+    refreshMsStatus();
+  }, [userAccount?.uid]);
+
+  useEffect(() => {
+    const onMsg = (event: MessageEvent) => {
+      const sameOrigin = typeof window !== 'undefined' && event.origin === window.location.origin;
+      if (!sameOrigin && !event.origin.endsWith('.run.app') && !event.origin.includes('localhost')) return;
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS' && event.data?.provider === 'microsoft') {
+        setError(null);
+        setExportNotice({ text: 'Microsoft Graph OAuth 2.0 connected. You can now sync daily appointments to OneDrive.' });
+        refreshMsStatus();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const doctorFilterLabel = useMemo(() => {
+    if (filterDoctorId === 'all') return 'All Dentists';
+    return doctors.find((d) => d.id === filterDoctorId)?.fullName || 'Selected Dentist';
+  }, [filterDoctorId, doctors]);
+
+  const buildDailyExportSnapshot = () => ({
+    clinicName: orgConfig?.clinicName || 'Tawakal Dental Clinic',
+    environment: isDemoMode ? ('DEMO' as const) : ('PRODUCTION' as const),
+    targetDate: selectedDate,
+    doctorFilterLabel,
+    patients: [],
+    appointments: dayAppointments,
+    staff: [],
+    services: [],
+    treatmentPlans: [],
+    invoices: [],
+    journals: [],
+    budgets: [],
+    inventory: [],
+    sterilizationLogs: [],
+    callRecords: [],
+  });
+
+  const handleBulkExportDailyExcel = async () => {
+    if (!userAccount) return;
+    setExportBusy('xlsx');
+    setError(null);
+    setExportNotice(null);
+    try {
+      const token = await getIdToken();
+      const res = await fetch(apiUrl('/api/excel/export'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Clinic-Role': userAccount.role,
+        },
+        body: JSON.stringify({
+          domain: 'daily_appointments',
+          snapshot: buildDailyExportSnapshot(),
+        }),
+      });
+      if (!res.ok) {
+        const d = await readJsonSafe<{ error?: string }>(res).catch((e) => ({
+          error: e instanceof Error ? e.message : 'Daily appointment Excel export failed.',
+        }));
+        throw new Error(d.error || 'Daily appointment Excel export failed.');
+      }
+
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] || `Tawakal_Dental_Daily_Appointments_${selectedDate}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      await writeAuditLog(
+        activeOrgId,
+        { uid: userAccount.uid, email: userAccount.email, role: userAccount.role },
+        'EXPORT_DAILY_APPOINTMENTS_EXCEL',
+        'appointments',
+        selectedDate,
+        `Bulk-exported ${dayAppointments.length} appointment(s) for ${selectedDate} (${doctorFilterLabel}) to ${filename}`
+      );
+      setExportNotice({ text: `Exported ${dayAppointments.length} appointment(s) to ${filename}.` });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Daily appointment Excel export failed.');
+    } finally {
+      setExportBusy(null);
+    }
+  };
+
+  const handleConnectMicrosoftGraph = async () => {
+    if (!userAccount) return;
+    setExportBusy('oauth');
+    setError(null);
+    try {
+      const token = await getIdToken();
+      const res = await fetch(apiUrl('/api/microsoft/auth/url'), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Clinic-Role': userAccount.role,
+        },
+      });
+      const data = await readJsonSafe<{ url?: string; error?: string }>(res);
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Microsoft Graph OAuth is not configured on the server.');
+      }
+      const popup = window.open(data.url, 'ms_oauth_popup', 'width=620,height=720');
+      if (!popup) {
+        setError('Sign-in popup blocked by browser. Allow popups to authorize Microsoft Graph OneDrive access.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to initiate Microsoft Graph sign-in.');
+    } finally {
+      setExportBusy(null);
+    }
+  };
+
+  const handleSyncDailyExcelToGraph = async () => {
+    if (!userAccount) return;
+    setExportBusy('graph');
+    setError(null);
+    setExportNotice(null);
+    try {
+      const token = await getIdToken();
+      const res = await fetch(apiUrl('/api/microsoft/excel/export-daily-appointments'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Clinic-Role': userAccount.role,
+        },
+        body: JSON.stringify({
+          snapshot: buildDailyExportSnapshot(),
+        }),
+      });
+      const data = await readJsonSafe<{
+        synced?: boolean;
+        authRequired?: boolean;
+        filename?: string;
+        drivePath?: string;
+        driveItem?: { webUrl?: string | null };
+        error?: string;
+      }>(res);
+      if (!res.ok || !data.synced) {
+        if (data.authRequired) {
+          await refreshMsStatus();
+        }
+        throw new Error(data.error || 'Microsoft Graph OneDrive sync failed.');
+      }
+
+      await writeAuditLog(
+        activeOrgId,
+        { uid: userAccount.uid, email: userAccount.email, role: userAccount.role },
+        'SYNC_DAILY_APPOINTMENTS_MS_GRAPH',
+        'appointments',
+        selectedDate,
+        `Synced ${dayAppointments.length} appointment(s) for ${selectedDate} to OneDrive (${data.drivePath})`
+      );
+      setExportNotice({
+        text: `Synced ${data.filename} (${dayAppointments.length} appointments) to OneDrive (${data.drivePath}).`,
+        webUrl: data.driveItem?.webUrl || null,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Microsoft Graph OneDrive sync failed.');
+    } finally {
+      setExportBusy(null);
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 print-a4-sheet">
+      <PrintLetterhead
+        clinicConfig={orgConfig}
+        documentTitle={`Daily Appointment Schedule · ${selectedDate}`}
+        subtitle={`${doctorFilterLabel} · ${dayAppointments.length} appointment(s)`}
+        preparedBy={userAccount?.displayName}
+      />
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">
             {mode === 'calendar' ? 'Appointment Scheduling & Calendar' : 'Live Reception & Patient Queue'}
@@ -219,8 +437,8 @@ export function AppointmentsView({ defaultMode = 'calendar' }: { defaultMode?: '
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-4 text-xs">
+      {/* Filters & Bulk Export Toolbar */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-3 text-xs no-print">
         <div className="flex items-center gap-2">
           <CalendarIcon className="w-4 h-4 text-slate-400" />
           <input
@@ -240,10 +458,79 @@ export function AppointmentsView({ defaultMode = 'calendar' }: { defaultMode?: '
             <option key={d.id} value={d.id}>{d.fullName}</option>
           ))}
         </select>
-        <span className="text-slate-500 ml-auto tabular-nums">
+        <span className="text-slate-500 tabular-nums">
           {dayAppointments.length} appointment(s) on {selectedDate}
         </span>
+
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          <button
+            type="button"
+            onClick={handleBulkExportDailyExcel}
+            disabled={Boolean(exportBusy)}
+            className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+            <span>{exportBusy === 'xlsx' ? 'Exporting...' : 'Export Daily Excel (.xlsx)'}</span>
+          </button>
+
+          {msStatus?.configured && !msStatus.oauthConnected ? (
+            <button
+              type="button"
+              onClick={handleConnectMicrosoftGraph}
+              disabled={Boolean(exportBusy)}
+              className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            >
+              <CloudUpload className="w-3.5 h-3.5" />
+              <span>{exportBusy === 'oauth' ? 'Connecting...' : 'Connect Microsoft OneDrive'}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSyncDailyExcelToGraph}
+              disabled={Boolean(exportBusy)}
+              className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            >
+              <CloudUpload className="w-3.5 h-3.5 text-blue-600" />
+              <span>{exportBusy === 'graph' ? 'Syncing...' : 'Sync to OneDrive (.xlsx)'}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Schedule</span>
+          </button>
+        </div>
       </div>
+
+      {error && (
+        <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2 no-print">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {exportNotice && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between gap-3 no-print">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700" />
+            <span>{exportNotice.text}</span>
+          </div>
+          {exportNotice.webUrl && (
+            <a
+              href={exportNotice.webUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium underline text-emerald-900 whitespace-nowrap"
+            >
+              Open in OneDrive
+            </a>
+          )}
+        </div>
+      )}
 
       {mode === 'calendar' ? (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -263,7 +550,7 @@ export function AppointmentsView({ defaultMode = 'calendar' }: { defaultMode?: '
                     <th className="py-2.5 px-4">Dentist &amp; Chair</th>
                     <th className="py-2.5 px-4">Service</th>
                     <th className="py-2.5 px-4">Status</th>
-                    <th className="py-2.5 px-4 text-right">Workflow Actions</th>
+                    <th className="py-2.5 px-4 text-right no-print">Workflow Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
@@ -297,7 +584,7 @@ export function AppointmentsView({ defaultMode = 'calendar' }: { defaultMode?: '
                           <p className="text-[11px] font-mono text-teal-700">Token {apt.queueToken}</p>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right no-print">
                         <select
                           value={apt.status}
                           onChange={(e) => handleStatusChange(apt, e.target.value as AppointmentStatus)}
@@ -374,7 +661,7 @@ export function AppointmentsView({ defaultMode = 'calendar' }: { defaultMode?: '
 
       {/* Booking Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto no-print">
           <div className="bg-white border border-slate-200 rounded-xl w-full max-w-xl shadow-lg my-8 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2">

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
-import { AlertCircle, Check, Lock, Save, Stethoscope } from 'lucide-react';
+import { AlertCircle, Check, Lock, Printer, Save, Stethoscope } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
+import { PrintLetterhead } from '../components/PrintLetterhead';
 import { db } from '../lib/firebase';
 import { FDI_PERMANENT_QUADRANTS, FDI_PRIMARY_QUADRANTS } from '../lib/erp-engine';
 import { saveOdontogram } from '../lib/firestore-service';
@@ -89,7 +90,7 @@ function ToothSvg({
 }
 
 export function OdontogramView() {
-  const { activeOrgId, userAccount, patients, selectedPatientId, setSelectedPatientId } = useErp();
+  const { activeOrgId, orgConfig, userAccount, patients, selectedPatientId, setSelectedPatientId } = useErp();
   const [dentition, setDentition] = useState<'permanent' | 'primary'>('permanent');
   const [teethMap, setTeethMap] = useState<Record<string, ToothState>>({});
   const [selectedTooth, setSelectedTooth] = useState<string>('16');
@@ -186,9 +187,20 @@ export function OdontogramView() {
 
   const quadrants = dentition === 'permanent' ? FDI_PERMANENT_QUADRANTS : FDI_PRIMARY_QUADRANTS;
 
+  const chartedFindings = Object.entries(teethMap)
+    .filter(([, st]) => st.condition !== 'Healthy' || (st.surfaces && st.surfaces.length > 0) || Boolean(st.notes))
+    .sort(([a], [b]) => a.localeCompare(b));
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 print-a4-sheet">
+      <PrintLetterhead
+        clinicConfig={orgConfig}
+        documentTitle={`Digital Odontogram Chart (${dentition === 'permanent' ? 'Permanent FDI' : 'Primary FDI'})`}
+        patient={activePatient}
+        preparedBy={userAccount?.displayName}
+      />
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Interactive ISO 3950 Odontogram</h1>
           <p className="text-sm text-slate-500">
@@ -211,6 +223,17 @@ export function OdontogramView() {
             )}
           </select>
 
+          {activePatientId && (
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Chart (A4)</span>
+            </button>
+          )}
+
           {canEditClinical && activePatientId && (
             <button
               type="button"
@@ -226,21 +249,21 @@ export function OdontogramView() {
       </div>
 
       {!canEditClinical && (
-        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-2.5 text-xs text-amber-800">
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-2.5 text-xs text-amber-800 no-print">
           <Lock className="w-4 h-4 shrink-0" />
           <span>Read-only clinical view. Only an authorized Dentist or Clinic Owner may update odontogram findings.</span>
         </div>
       )}
 
       {error && (
-        <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2 text-xs text-red-700">
+        <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2 text-xs text-red-700 no-print">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {savedNotice && (
-        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-xs text-emerald-800">
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-xs text-emerald-800 no-print">
           <Check className="w-4 h-4 shrink-0" />
           <span>Odontogram chart saved and logged to the clinical audit trail for {activePatient?.fullName}.</span>
         </div>
@@ -254,8 +277,8 @@ export function OdontogramView() {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
           {/* Interactive Teeth Chart */}
-          <div className="xl:col-span-8 bg-white border border-slate-200 rounded-xl p-5 space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="xl:col-span-8 bg-white border border-slate-200 rounded-xl p-5 space-y-5 print-full-width print-a4-sheet">
+            <div className="flex flex-wrap items-center justify-between gap-3 no-print">
               <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200">
                 <button
                   type="button"
@@ -329,10 +352,36 @@ export function OdontogramView() {
                 </div>
               ))}
             </div>
+
+            {chartedFindings.length > 0 && (
+              <div className="print-only pt-4 border-t border-slate-300">
+                <h4 className="text-xs font-bold text-slate-900 mb-2">Recorded Dental Chart Findings</h4>
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-300 bg-slate-50">
+                      <th className="py-1.5 px-2">FDI Tooth</th>
+                      <th className="py-1.5 px-2">Condition</th>
+                      <th className="py-1.5 px-2">Surfaces</th>
+                      <th className="py-1.5 px-2">Clinical Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {chartedFindings.map(([toothId, st]) => (
+                      <tr key={toothId}>
+                        <td className="py-1.5 px-2 font-mono font-semibold">#{toothId}</td>
+                        <td className="py-1.5 px-2">{st.condition}</td>
+                        <td className="py-1.5 px-2 font-mono">{st.surfaces?.join(', ') || '—'}</td>
+                        <td className="py-1.5 px-2">{st.notes || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Tooth Inspector */}
-          <div className="xl:col-span-4 bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+          <div className="xl:col-span-4 bg-white border border-slate-200 rounded-xl p-5 space-y-4 no-print">
             <div className="border-b border-slate-200 pb-3">
               <p className="text-xs text-slate-500">Selected FDI Tooth</p>
               <h3 className="text-xl font-semibold text-slate-900 font-mono">Tooth #{selectedTooth}</h3>
