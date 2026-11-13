@@ -1,0 +1,517 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Core Primitives & Validation Helpers
+    // -------------------------------------------------------------------------
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedOwner() {
+      return isVerified() && request.auth.token.email == 'wrelectronicsofficial@gmail.com';
+    }
+
+    function userProfileExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasActiveOrgAccess(orgId) {
+      return isVerified() && (
+        isBootstrappedOwner() ||
+        (userProfileExists() && userProfile().isActive == true && (userProfile().orgId == orgId || orgId == 'tawakal-demo'))
+      );
+    }
+
+    function currentRole() {
+      return isBootstrappedOwner() ? 'owner' : (userProfileExists() ? userProfile().role : '');
+    }
+
+    function isClinicAdmin(orgId) {
+      return hasActiveOrgAccess(orgId) && currentRole() in ['owner', 'admin'];
+    }
+
+    function isClinicManagerOrAdmin(orgId) {
+      return hasActiveOrgAccess(orgId) && currentRole() in ['owner', 'admin', 'manager'];
+    }
+
+    function isFrontDesk(orgId) {
+      return hasActiveOrgAccess(orgId) && currentRole() in ['owner', 'admin', 'manager', 'receptionist', 'dentist', 'assistant', 'call_agent'];
+    }
+
+    function isClinicalViewer(orgId) {
+      return hasActiveOrgAccess(orgId) && currentRole() in ['owner', 'admin', 'manager', 'dentist', 'assistant'];
+    }
+
+    function isDentistOrAdmin(orgId) {
+      return hasActiveOrgAccess(orgId) && currentRole() in ['owner', 'admin', 'dentist'];
+    }
+
+    function isBillingStaff(orgId) {
+      return hasActiveOrgAccess(orgId) && currentRole() in ['owner', 'admin', 'manager', 'accountant', 'receptionist'];
+    }
+
+    function isAccountantOrAdmin(orgId) {
+      return hasActiveOrgAccess(orgId) && currentRole() in ['owner', 'admin', 'manager', 'accountant'];
+    }
+
+    function isInventoryStaff(orgId) {
+      return hasActiveOrgAccess(orgId) && currentRole() in ['owner', 'admin', 'manager', 'inventory_manager', 'assistant', 'dentist'];
+    }
+
+    function isValidUserAccount(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'orgId', 'isActive', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'orgId', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.role in ['owner', 'admin', 'manager', 'dentist', 'assistant', 'receptionist', 'accountant', 'inventory_manager', 'call_agent'] &&
+        data.orgId is string && isValidId(data.orgId) &&
+        data.isActive is bool &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidOrganizationConfig(data) {
+      return data.keys().hasAll(['orgId', 'clinicName', 'location', 'currency', 'timezone', 'isDemo', 'setupCompleted']) &&
+        data.keys().hasOnly(['orgId', 'clinicName', 'location', 'currency', 'timezone', 'isDemo', 'setupCompleted', 'chairsCount', 'defaultSlotMinutes', 'taxRatePct', 'shccRegistrationNo', 'phone', 'openingHours', 'updatedAt']) &&
+        data.orgId is string && isValidId(data.orgId) &&
+        data.clinicName is string && data.clinicName.size() >= 1 && data.clinicName.size() <= 160 &&
+        data.location is string && data.location.size() >= 1 && data.location.size() <= 240 &&
+        data.currency is string && data.currency.size() >= 1 && data.currency.size() <= 8 &&
+        data.timezone is string && data.timezone.size() >= 1 && data.timezone.size() <= 64 &&
+        data.isDemo is bool &&
+        data.setupCompleted is bool;
+    }
+
+    function isValidStaffMember(data) {
+      return data.keys().hasAll(['staffCode', 'fullName', 'role', 'isActive', 'createdAt']) &&
+        data.keys().hasOnly(['staffCode', 'fullName', 'role', 'specialty', 'pmdcNumber', 'credentialStatus', 'consultationFee', 'assignedChair', 'phone', 'workingDays', 'workingHours', 'compensationModel', 'baseSalary', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.staffCode is string && data.staffCode.size() >= 1 && data.staffCode.size() <= 32 &&
+        data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
+        data.role is string && data.role.size() >= 1 && data.role.size() <= 40 &&
+        data.isActive is bool &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidPatient(data) {
+      return data.keys().hasAll(['patientCode', 'fullName', 'gender', 'mobile', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['patientCode', 'fullName', 'guardianName', 'dob', 'gender', 'mobile', 'whatsapp', 'email', 'cnic', 'address', 'city', 'emergencyContact', 'referralSource', 'assignedDoctorId', 'allergies', 'medicalConditions', 'currentMedications', 'medicalAlerts', 'bloodPressure', 'pulseBpm', 'consentSigned', 'status', 'createdAt', 'updatedAt']) &&
+        data.patientCode is string && data.patientCode.size() >= 1 && data.patientCode.size() <= 32 &&
+        data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 140 &&
+        data.gender in ['Male', 'Female', 'Other'] &&
+        data.mobile is string && data.mobile.size() >= 4 && data.mobile.size() <= 32 &&
+        data.status in ['active', 'inactive'] &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidServiceItem(data) {
+      return data.keys().hasAll(['code', 'name', 'category', 'standardPrice', 'durationMin', 'isActive', 'createdAt']) &&
+        data.keys().hasOnly(['code', 'name', 'category', 'standardPrice', 'durationMin', 'labCost', 'materialCost', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.code is string && data.code.size() >= 1 && data.code.size() <= 32 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 140 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.standardPrice is number && data.standardPrice >= 0 &&
+        data.durationMin is int && data.durationMin >= 5 && data.durationMin <= 480 &&
+        data.isActive is bool &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidAppointment(data) {
+      return data.keys().hasAll(['appointmentCode', 'patientId', 'doctorId', 'date', 'startTime', 'endTime', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['appointmentCode', 'patientId', 'patientName', 'doctorId', 'doctorName', 'serviceId', 'serviceName', 'chairNumber', 'date', 'startTime', 'endTime', 'source', 'status', 'priority', 'queueToken', 'notes', 'createdBy', 'createdAt', 'updatedAt']) &&
+        data.appointmentCode is string && data.appointmentCode.size() >= 1 && data.appointmentCode.size() <= 32 &&
+        data.patientId is string && isValidId(data.patientId) &&
+        data.doctorId is string && isValidId(data.doctorId) &&
+        data.date is string && data.date.size() == 10 &&
+        data.startTime is string && data.startTime.size() <= 10 &&
+        data.endTime is string && data.endTime.size() <= 10 &&
+        data.status in ['Requested', 'Pending Confirmation', 'Confirmed', 'Checked In', 'Waiting', 'Seated', 'In Treatment', 'Completed', 'Cancelled', 'Rescheduled', 'No Show'] &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidOdontogram(data) {
+      return data.keys().hasAll(['patientId', 'notation', 'teethJson', 'updatedBy', 'updatedAt']) &&
+        data.keys().hasOnly(['patientId', 'notation', 'teethJson', 'updatedBy', 'updatedAt']) &&
+        data.patientId is string && isValidId(data.patientId) &&
+        data.notation in ['FDI', 'Universal'] &&
+        data.teethJson is string && data.teethJson.size() <= 32000 &&
+        data.updatedBy is string && data.updatedBy.size() <= 128 &&
+        data.updatedAt is string && data.updatedAt.size() <= 40;
+    }
+
+    function isValidClinicalNote(data) {
+      return data.keys().hasAll(['patientId', 'doctorId', 'noteType', 'isFinalized', 'authorUid', 'createdAt']) &&
+        data.keys().hasOnly(['patientId', 'doctorId', 'doctorName', 'noteType', 'chiefComplaint', 'findings', 'diagnosis', 'prescriptionJson', 'isFinalized', 'authorUid', 'createdAt', 'updatedAt']) &&
+        data.patientId is string && isValidId(data.patientId) &&
+        data.doctorId is string && isValidId(data.doctorId) &&
+        data.noteType in ['examination', 'progress', 'prescription', 'perio'] &&
+        data.isFinalized is bool &&
+        data.authorUid is string && data.authorUid == request.auth.uid &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidTreatmentPlan(data) {
+      return data.keys().hasAll(['planCode', 'patientId', 'doctorId', 'title', 'status', 'totalEstimated', 'createdAt']) &&
+        data.keys().hasOnly(['planCode', 'patientId', 'patientName', 'doctorId', 'doctorName', 'title', 'status', 'itemsJson', 'totalEstimated', 'discount', 'netEstimated', 'consentSigned', 'createdAt', 'updatedAt']) &&
+        data.planCode is string && data.planCode.size() >= 1 && data.planCode.size() <= 32 &&
+        data.patientId is string && isValidId(data.patientId) &&
+        data.doctorId is string && isValidId(data.doctorId) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.totalEstimated is number && data.totalEstimated >= 0 &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['invoiceNumber', 'patientId', 'grandTotal', 'paidAmount', 'balanceDue', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['invoiceNumber', 'patientId', 'patientName', 'doctorId', 'itemsJson', 'subtotal', 'discount', 'tax', 'grandTotal', 'paidAmount', 'balanceDue', 'status', 'paymentsJson', 'createdBy', 'createdAt', 'updatedAt']) &&
+        data.invoiceNumber is string && data.invoiceNumber.size() >= 1 && data.invoiceNumber.size() <= 32 &&
+        data.patientId is string && isValidId(data.patientId) &&
+        data.grandTotal is number && data.grandTotal >= 0 &&
+        data.paidAmount is number && data.paidAmount >= 0 &&
+        data.balanceDue is number && data.balanceDue >= 0 &&
+        data.status in ['Unpaid', 'Partially Paid', 'Paid', 'Refunded', 'Void'] &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidJournalEntry(data) {
+      return data.keys().hasAll(['entryNumber', 'date', 'voucherType', 'totalDebit', 'totalCredit', 'createdBy', 'createdAt']) &&
+        data.keys().hasOnly(['entryNumber', 'date', 'voucherType', 'category', 'description', 'linesJson', 'totalDebit', 'totalCredit', 'referenceId', 'createdBy', 'createdAt']) &&
+        data.entryNumber is string && data.entryNumber.size() >= 1 && data.entryNumber.size() <= 32 &&
+        data.date is string && data.date.size() == 10 &&
+        data.voucherType in ['Payment', 'Receive', 'Journal', 'Contra', 'Expense', 'Adjustment'] &&
+        data.totalDebit is number && data.totalDebit > 0 &&
+        data.totalCredit is number && data.totalCredit == data.totalDebit &&
+        data.createdBy is string && data.createdBy.size() <= 128 &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidBudgetItem(data) {
+      return data.keys().hasAll(['month', 'category', 'plannedAmount', 'createdAt']) &&
+        data.keys().hasOnly(['month', 'category', 'plannedAmount', 'notes', 'createdAt', 'updatedAt']) &&
+        data.month is string && data.month.size() >= 7 && data.month.size() <= 10 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.plannedAmount is number && data.plannedAmount >= 0 &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidInventoryItem(data) {
+      return data.keys().hasAll(['sku', 'name', 'category', 'unit', 'currentStock', 'minStock', 'updatedAt']) &&
+        data.keys().hasOnly(['sku', 'name', 'category', 'unit', 'purchaseCost', 'currentStock', 'minStock', 'batchNumber', 'expiryDate', 'supplierName', 'updatedAt']) &&
+        data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 40 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 140 &&
+        data.currentStock is number && data.currentStock >= 0 &&
+        data.minStock is number && data.minStock >= 0 &&
+        data.updatedAt is string && data.updatedAt.size() <= 40;
+    }
+
+    function isValidSterilizationLog(data) {
+      return data.keys().hasAll(['batchId', 'instrumentSet', 'equipmentName', 'cycleDate', 'indicatorResult', 'responsibleStaff', 'createdAt']) &&
+        data.keys().hasOnly(['batchId', 'instrumentSet', 'equipmentName', 'cycleDate', 'cycleTime', 'indicatorResult', 'responsibleStaff', 'notes', 'createdAt']) &&
+        data.batchId is string && data.batchId.size() >= 1 && data.batchId.size() <= 40 &&
+        data.indicatorResult in ['Pass', 'Fail', 'Pending'] &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidCallRecord(data) {
+      return data.keys().hasAll(['callCode', 'direction', 'callerNumber', 'outcome', 'emergencyFlag', 'consentDisclosed', 'createdAt']) &&
+        data.keys().hasOnly(['callCode', 'direction', 'callerNumber', 'language', 'intent', 'outcome', 'durationSec', 'transferredToHuman', 'emergencyFlag', 'consentDisclosed', 'appointmentId', 'summary', 'createdAt']) &&
+        data.callCode is string && data.callCode.size() >= 1 && data.callCode.size() <= 32 &&
+        data.direction in ['inbound', 'outbound'] &&
+        data.emergencyFlag is bool &&
+        data.consentDisclosed is bool &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['actorUid', 'actorEmail', 'action', 'resourceType', 'timestamp']) &&
+        data.keys().hasOnly(['actorUid', 'actorEmail', 'actorRole', 'action', 'resourceType', 'resourceId', 'details', 'timestamp']) &&
+        data.actorUid is string && data.actorUid == request.auth.uid &&
+        data.actorEmail is string && data.actorEmail.size() <= 160 &&
+        data.action is string && data.action.size() <= 80 &&
+        data.resourceType is string && data.resourceType.size() <= 60 &&
+        data.timestamp is string && data.timestamp.size() <= 40;
+    }
+
+    function isValidLabCase(data) {
+      return data.keys().hasAll(['caseCode', 'patientId', 'doctorId', 'restorationType', 'labName', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['caseCode', 'patientId', 'patientName', 'doctorId', 'toothNumber', 'restorationType', 'labName', 'shade', 'labCost', 'status', 'expectedDelivery', 'createdAt', 'updatedAt']) &&
+        data.caseCode is string && data.caseCode.size() >= 1 && data.caseCode.size() <= 32 &&
+        data.patientId is string && isValidId(data.patientId) &&
+        data.doctorId is string && isValidId(data.doctorId) &&
+        data.status in ['Created', 'Sent to Lab', 'In Progress', 'Received', 'Fitted', 'Rework Required'] &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidBackupRecord(data) {
+      return data.keys().hasAll(['label', 'recordCount', 'status', 'createdBy', 'createdAt']) &&
+        data.keys().hasOnly(['backupId', 'label', 'backupType', 'recordCount', 'fileCount', 'sizeBytes', 'destination', 'encryptionStatus', 'checksum', 'checksumStatus', 'status', 'failureReason', 'restoreStatus', 'storagePath', 'wpStored', 'gcsStored', 'createdBy', 'createdAt']) &&
+        data.label is string && data.label.size() >= 1 && data.label.size() <= 120 &&
+        data.recordCount is int && data.recordCount >= 0 &&
+        data.status in ['Pending', 'Running', 'Completed', 'Failed', 'Verification Required', 'Verified', 'Restored', 'Created'] &&
+        data.createdBy is string && data.createdBy == request.auth.uid &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidSyncJob(data) {
+      return data.keys().hasAll(['jobId', 'eventId', 'idempotencyKey', 'sourceModule', 'destination', 'status', 'retryCount', 'createdAt']) &&
+        data.keys().hasOnly(['jobId', 'eventId', 'idempotencyKey', 'sourceModule', 'destination', 'status', 'retryCount', 'lastError', 'nextRetryTime', 'createdAt', 'completedAt']) &&
+        data.jobId is string && data.jobId.size() >= 1 && data.jobId.size() <= 64 &&
+        data.eventId is string && data.eventId.size() >= 1 && data.eventId.size() <= 64 &&
+        data.idempotencyKey is string && data.idempotencyKey.size() >= 1 && data.idempotencyKey.size() <= 120 &&
+        data.sourceModule is string && data.sourceModule.size() >= 1 && data.sourceModule.size() <= 80 &&
+        data.destination in ['Google Cloud Storage', 'WordPress Vault', 'WordPress Public', 'Microsoft Graph Excel'] &&
+        data.status in ['Queued', 'Processing', 'Completed', 'Failed', 'Retrying', 'Cancelled'] &&
+        data.retryCount is int && data.retryCount >= 0 &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidIntegrationSettings(data) {
+      return data.keys().hasAll(['updatedAt']) &&
+        data.keys().hasOnly(['wpSiteUrl', 'wpUsername', 'wpPublicSyncEnabled', 'wpBackupSyncEnabled', 'msDriveLocation', 'msWorkbookName', 'msWorksheetName', 'msSyncFrequency', 'msSyncDirection', 'gcsBucketName', 'gcsKmsEnabled', 'dailyBackupTime', 'weeklyRetentionDays', 'monthlyRetentionDays', 'updatedBy', 'updatedAt']) &&
+        data.updatedAt is string && data.updatedAt.size() <= 40;
+    }
+
+    function isValidRestoreRun(data) {
+      return data.keys().hasAll(['backupId', 'status', 'verifiedCountsJson', 'financialReconciled', 'checksumMatched', 'createdAt']) &&
+        data.keys().hasOnly(['backupId', 'preRestoreBackupId', 'status', 'verifiedCountsJson', 'financialReconciled', 'checksumMatched', 'approvedBy', 'notes', 'createdAt']) &&
+        data.backupId is string && data.backupId.size() >= 1 && data.backupId.size() <= 64 &&
+        data.status in ['Staging Verified', 'Approved & Applied', 'Failed'] &&
+        data.verifiedCountsJson is string && data.verifiedCountsJson.size() <= 4000 &&
+        data.financialReconciled is bool &&
+        data.checksumMatched is bool &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidExcelImportRecord(data) {
+      return data.keys().hasAll(['filename', 'worksheetName', 'targetEntity', 'totalRows', 'validRows', 'errorRows', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['filename', 'worksheetName', 'targetEntity', 'totalRows', 'validRows', 'errorRows', 'status', 'approvedBy', 'createdAt']) &&
+        data.filename is string && data.filename.size() >= 1 && data.filename.size() <= 160 &&
+        data.worksheetName is string && data.worksheetName.size() >= 1 && data.worksheetName.size() <= 120 &&
+        data.targetEntity is string && data.targetEntity.size() >= 1 && data.targetEntity.size() <= 60 &&
+        data.totalRows is int && data.totalRows >= 0 &&
+        data.validRows is int && data.validRows >= 0 &&
+        data.errorRows is int && data.errorRows >= 0 &&
+        data.status in ['Previewed', 'Approved & Imported', 'Rejected'] &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidDocumentRef(data) {
+      return data.keys().hasAll(['category', 'filename', 'mimeType', 'sizeBytes', 'checksum', 'storagePath', 'uploadedBy', 'createdAt']) &&
+        data.keys().hasOnly(['patientId', 'category', 'filename', 'mimeType', 'sizeBytes', 'checksum', 'storagePath', 'uploadedBy', 'createdAt']) &&
+        data.category in ['xray', 'cbct', 'consent', 'lab', 'clinical_photo'] &&
+        data.filename is string && data.filename.size() >= 1 && data.filename.size() <= 160 &&
+        data.mimeType is string && data.mimeType.size() >= 1 && data.mimeType.size() <= 80 &&
+        data.sizeBytes is int && data.sizeBytes >= 0 &&
+        data.checksum is string && data.checksum.size() >= 8 && data.checksum.size() <= 128 &&
+        data.storagePath is string && data.storagePath.size() >= 1 && data.storagePath.size() <= 240 &&
+        data.uploadedBy is string && data.uploadedBy == request.auth.uid &&
+        data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    // -------------------------------------------------------------------------
+    // User Profiles (/users/{userId})
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isVerified() && isValidId(userId) && (request.auth.uid == userId || isBootstrappedOwner());
+      allow list: if isBootstrappedOwner();
+      allow create: if isVerified() && isValidId(userId) && isValidUserAccount(incoming()) && (
+        (isBootstrappedOwner() && incoming().uid == userId) ||
+        (request.auth.uid == userId && incoming().uid == request.auth.uid && incoming().role == 'receptionist' && incoming().orgId == 'tawakal-demo')
+      );
+      allow update: if isVerified() && isValidId(userId) && isValidUserAccount(incoming()) && (
+        isBootstrappedOwner() ||
+        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']) && incoming().role == existing().role && incoming().orgId == existing().orgId)
+      );
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Organizations & Clinic Subcollections
+    // -------------------------------------------------------------------------
+    match /organizations/{orgId} {
+      allow get: if isValidId(orgId) && hasActiveOrgAccess(orgId);
+      allow list: if isBootstrappedOwner();
+      allow create, update: if isValidId(orgId) && isClinicAdmin(orgId) && isValidOrganizationConfig(incoming());
+      allow delete: if false;
+
+      match /staff/{staffId} {
+        allow get: if isValidId(staffId) && hasActiveOrgAccess(orgId);
+        allow list: if isVerified() && hasActiveOrgAccess(orgId);
+        allow create, update: if isValidId(staffId) && isClinicManagerOrAdmin(orgId) && isValidStaffMember(incoming());
+        allow delete: if isValidId(staffId) && isClinicAdmin(orgId);
+      }
+
+      match /patients/{patientId} {
+        allow get: if isValidId(patientId) && isFrontDesk(orgId);
+        allow list: if isVerified() && isFrontDesk(orgId);
+        allow create: if isValidId(patientId) && isFrontDesk(orgId) && isValidPatient(incoming());
+        allow update: if isValidId(patientId) && isValidPatient(incoming()) && (
+          isClinicalViewer(orgId) ||
+          (isFrontDesk(orgId) && !incoming().diff(existing()).affectedKeys().hasAny(['allergies', 'medicalConditions', 'currentMedications', 'medicalAlerts', 'bloodPressure', 'pulseBpm']))
+        );
+        allow delete: if false;
+      }
+
+      match /services/{serviceId} {
+        allow get: if isValidId(serviceId) && hasActiveOrgAccess(orgId);
+        allow list: if isVerified() && hasActiveOrgAccess(orgId);
+        allow create, update: if isValidId(serviceId) && isClinicManagerOrAdmin(orgId) && isValidServiceItem(incoming());
+        allow delete: if isValidId(serviceId) && isClinicAdmin(orgId);
+      }
+
+      match /appointments/{appointmentId} {
+        allow get: if isValidId(appointmentId) && isFrontDesk(orgId);
+        allow list: if isVerified() && isFrontDesk(orgId);
+        allow create, update: if isValidId(appointmentId) && isFrontDesk(orgId) && isValidAppointment(incoming());
+        allow delete: if false;
+      }
+
+      match /odontograms/{patientId} {
+        allow get: if isValidId(patientId) && isClinicalViewer(orgId);
+        allow list: if isVerified() && isClinicalViewer(orgId);
+        allow create, update: if isValidId(patientId) && isDentistOrAdmin(orgId) && isValidOdontogram(incoming());
+        allow delete: if false;
+      }
+
+      match /clinical_notes/{noteId} {
+        allow get: if isValidId(noteId) && isClinicalViewer(orgId);
+        allow list: if isVerified() && isClinicalViewer(orgId);
+        allow create: if isValidId(noteId) && isDentistOrAdmin(orgId) && isValidClinicalNote(incoming());
+        allow update: if isValidId(noteId) && isDentistOrAdmin(orgId) && existing().isFinalized == false && isValidClinicalNote(incoming());
+        allow delete: if false;
+      }
+
+      match /treatment_plans/{planId} {
+        allow get: if isValidId(planId) && (isClinicalViewer(orgId) || isBillingStaff(orgId));
+        allow list: if isVerified() && (isClinicalViewer(orgId) || isBillingStaff(orgId));
+        allow create, update: if isValidId(planId) && isDentistOrAdmin(orgId) && isValidTreatmentPlan(incoming());
+        allow delete: if false;
+      }
+
+      match /invoices/{invoiceId} {
+        allow get: if isValidId(invoiceId) && isBillingStaff(orgId);
+        allow list: if isVerified() && isBillingStaff(orgId);
+        allow create, update: if isValidId(invoiceId) && isBillingStaff(orgId) && isValidInvoice(incoming());
+        allow delete: if false;
+      }
+
+      match /journals/{journalId} {
+        allow get: if isValidId(journalId) && isAccountantOrAdmin(orgId);
+        allow list: if isVerified() && isAccountantOrAdmin(orgId);
+        allow create: if isValidId(journalId) && isAccountantOrAdmin(orgId) && isValidJournalEntry(incoming());
+        allow update, delete: if false;
+      }
+
+      match /budgets/{budgetId} {
+        allow get: if isValidId(budgetId) && isAccountantOrAdmin(orgId);
+        allow list: if isVerified() && isAccountantOrAdmin(orgId);
+        allow create, update: if isValidId(budgetId) && isAccountantOrAdmin(orgId) && isValidBudgetItem(incoming());
+        allow delete: if isValidId(budgetId) && isClinicAdmin(orgId);
+      }
+
+      match /inventory/{itemId} {
+        allow get: if isValidId(itemId) && isInventoryStaff(orgId);
+        allow list: if isVerified() && isInventoryStaff(orgId);
+        allow create, update: if isValidId(itemId) && isInventoryStaff(orgId) && isValidInventoryItem(incoming());
+        allow delete: if isValidId(itemId) && isClinicAdmin(orgId);
+      }
+
+      match /sterilization_logs/{logId} {
+        allow get: if isValidId(logId) && isClinicalViewer(orgId);
+        allow list: if isVerified() && isClinicalViewer(orgId);
+        allow create: if isValidId(logId) && isClinicalViewer(orgId) && isValidSterilizationLog(incoming());
+        allow update: if isValidId(logId) && isDentistOrAdmin(orgId) && isValidSterilizationLog(incoming());
+        allow delete: if false;
+      }
+
+      match /call_records/{callId} {
+        allow get: if isValidId(callId) && isFrontDesk(orgId);
+        allow list: if isVerified() && isFrontDesk(orgId);
+        allow create, update: if isValidId(callId) && isFrontDesk(orgId) && isValidCallRecord(incoming());
+        allow delete: if false;
+      }
+
+      match /audit_logs/{logId} {
+        allow get: if isValidId(logId) && isClinicManagerOrAdmin(orgId);
+        allow list: if isVerified() && isClinicManagerOrAdmin(orgId);
+        allow create: if isValidId(logId) && hasActiveOrgAccess(orgId) && isValidAuditLog(incoming());
+        allow update, delete: if false;
+      }
+
+      match /lab_cases/{caseId} {
+        allow get: if isValidId(caseId) && isClinicalViewer(orgId);
+        allow list: if isVerified() && isClinicalViewer(orgId);
+        allow create, update: if isValidId(caseId) && isClinicalViewer(orgId) && isValidLabCase(incoming());
+        allow delete: if false;
+      }
+
+      match /backups/{backupId} {
+        allow get: if isValidId(backupId) && isClinicAdmin(orgId);
+        allow list: if isVerified() && isClinicAdmin(orgId);
+        allow create, update: if isValidId(backupId) && isClinicAdmin(orgId) && isValidBackupRecord(incoming());
+        allow delete: if false;
+      }
+
+      match /sync_jobs/{jobId} {
+        allow get: if isValidId(jobId) && isClinicAdmin(orgId);
+        allow list: if isVerified() && isClinicAdmin(orgId);
+        allow create, update: if isValidId(jobId) && isClinicAdmin(orgId) && isValidSyncJob(incoming());
+        allow delete: if false;
+      }
+
+      match /integration_configs/{configId} {
+        allow get: if isValidId(configId) && isClinicAdmin(orgId);
+        allow list: if isVerified() && isClinicAdmin(orgId);
+        allow create, update: if isValidId(configId) && isClinicAdmin(orgId) && isValidIntegrationSettings(incoming());
+        allow delete: if false;
+      }
+
+      match /restore_runs/{restoreId} {
+        allow get: if isValidId(restoreId) && isClinicAdmin(orgId);
+        allow list: if isVerified() && isClinicAdmin(orgId);
+        allow create, update: if isValidId(restoreId) && isClinicAdmin(orgId) && isValidRestoreRun(incoming());
+        allow delete: if false;
+      }
+
+      match /excel_imports/{importId} {
+        allow get: if isValidId(importId) && isClinicAdmin(orgId);
+        allow list: if isVerified() && isClinicAdmin(orgId);
+        allow create, update: if isValidId(importId) && isClinicAdmin(orgId) && isValidExcelImportRecord(incoming());
+        allow delete: if false;
+      }
+
+      match /document_refs/{docId} {
+        allow get: if isValidId(docId) && isClinicalViewer(orgId);
+        allow list: if isVerified() && isClinicalViewer(orgId);
+        allow create: if isValidId(docId) && isClinicalViewer(orgId) && isValidDocumentRef(incoming());
+        allow update, delete: if false;
+      }
+    }
+  }
+}

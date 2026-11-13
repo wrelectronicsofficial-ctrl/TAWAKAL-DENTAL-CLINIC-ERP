@@ -1,0 +1,6 @@
+{
+  "name": "Tawakal Dental Clinic ERP",
+  "description": "Enterprise Dental Clinic ERP, Clinical EHR, Double-Entry Accounting & AI Voice Receptionist for Tawakal Dental Clinic, Saudabad, Malir, Karachi.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

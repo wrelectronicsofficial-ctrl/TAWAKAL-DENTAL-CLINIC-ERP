@@ -1,0 +1,582 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Authenticated clinic staff user account and role assignment",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "role": {
+          "type": "string",
+          "enum": [
+            "owner",
+            "admin",
+            "manager",
+            "dentist",
+            "assistant",
+            "receptionist",
+            "accountant",
+            "inventory_manager",
+            "call_agent"
+          ]
+        },
+        "orgId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 64 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "role", "orgId", "isActive", "createdAt"]
+    },
+    "OrganizationConfig": {
+      "title": "OrganizationConfig",
+      "description": "Clinic organization configuration, hours, chairs, and regulatory settings",
+      "type": "object",
+      "properties": {
+        "orgId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 64 },
+        "clinicName": { "type": "string", "maxLength": 160 },
+        "location": { "type": "string", "maxLength": 240 },
+        "currency": { "type": "string", "maxLength": 8 },
+        "timezone": { "type": "string", "maxLength": 64 },
+        "isDemo": { "type": "boolean" },
+        "setupCompleted": { "type": "boolean" },
+        "chairsCount": { "type": "integer" },
+        "defaultSlotMinutes": { "type": "integer" },
+        "taxRatePct": { "type": "number" },
+        "shccRegistrationNo": { "type": "string", "maxLength": 80 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "openingHours": { "type": "string", "maxLength": 1000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orgId", "clinicName", "location", "currency", "timezone", "isDemo", "setupCompleted"]
+    },
+    "StaffMember": {
+      "title": "StaffMember",
+      "description": "Dentists, dental assistants, and clinic administrative staff",
+      "type": "object",
+      "properties": {
+        "staffCode": { "type": "string", "maxLength": 32 },
+        "fullName": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "maxLength": 40 },
+        "specialty": { "type": "string", "maxLength": 120 },
+        "pmdcNumber": { "type": "string", "maxLength": 64 },
+        "credentialStatus": { "type": "string", "enum": ["unverified", "pending", "verified"] },
+        "consultationFee": { "type": "number" },
+        "assignedChair": { "type": "string", "maxLength": 40 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "workingDays": { "type": "string", "maxLength": 120 },
+        "workingHours": { "type": "string", "maxLength": 80 },
+        "compensationModel": { "type": "string", "maxLength": 60 },
+        "baseSalary": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["staffCode", "fullName", "role", "isActive", "createdAt"]
+    },
+    "Patient": {
+      "title": "Patient",
+      "description": "Patient demographic, emergency contact, and restricted medical history record",
+      "type": "object",
+      "properties": {
+        "patientCode": { "type": "string", "maxLength": 32 },
+        "fullName": { "type": "string", "maxLength": 140 },
+        "guardianName": { "type": "string", "maxLength": 140 },
+        "dob": { "type": "string", "maxLength": 20 },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "mobile": { "type": "string", "maxLength": 32 },
+        "whatsapp": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "maxLength": 160 },
+        "cnic": { "type": "string", "maxLength": 32 },
+        "address": { "type": "string", "maxLength": 240 },
+        "city": { "type": "string", "maxLength": 80 },
+        "emergencyContact": { "type": "string", "maxLength": 140 },
+        "referralSource": { "type": "string", "maxLength": 80 },
+        "assignedDoctorId": { "type": "string", "maxLength": 64 },
+        "allergies": { "type": "string", "maxLength": 500 },
+        "medicalConditions": { "type": "string", "maxLength": 500 },
+        "currentMedications": { "type": "string", "maxLength": 500 },
+        "medicalAlerts": { "type": "string", "maxLength": 300 },
+        "bloodPressure": { "type": "string", "maxLength": 24 },
+        "pulseBpm": { "type": "integer" },
+        "consentSigned": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["patientCode", "fullName", "gender", "mobile", "status", "createdAt"]
+    },
+    "ServiceCatalogItem": {
+      "title": "ServiceCatalogItem",
+      "description": "Clinic-configured dental service and procedure pricing",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 32 },
+        "name": { "type": "string", "maxLength": 140 },
+        "category": { "type": "string", "maxLength": 80 },
+        "standardPrice": { "type": "number" },
+        "durationMin": { "type": "integer" },
+        "labCost": { "type": "number" },
+        "materialCost": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "name", "category", "standardPrice", "durationMin", "isActive", "createdAt"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Scheduled dental appointment with chair, doctor, and queue state",
+      "type": "object",
+      "properties": {
+        "appointmentCode": { "type": "string", "maxLength": 32 },
+        "patientId": { "type": "string", "maxLength": 64 },
+        "patientName": { "type": "string", "maxLength": 140 },
+        "doctorId": { "type": "string", "maxLength": 64 },
+        "doctorName": { "type": "string", "maxLength": 120 },
+        "serviceId": { "type": "string", "maxLength": 64 },
+        "serviceName": { "type": "string", "maxLength": 140 },
+        "chairNumber": { "type": "string", "maxLength": 32 },
+        "date": { "type": "string", "maxLength": 20 },
+        "startTime": { "type": "string", "maxLength": 10 },
+        "endTime": { "type": "string", "maxLength": 10 },
+        "source": { "type": "string", "maxLength": 40 },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Requested",
+            "Pending Confirmation",
+            "Confirmed",
+            "Checked In",
+            "Waiting",
+            "Seated",
+            "In Treatment",
+            "Completed",
+            "Cancelled",
+            "Rescheduled",
+            "No Show"
+          ]
+        },
+        "priority": { "type": "string", "enum": ["normal", "emergency"] },
+        "queueToken": { "type": "string", "maxLength": 20 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["appointmentCode", "patientId", "doctorId", "date", "startTime", "endTime", "status", "createdAt"]
+    },
+    "OdontogramRecord": {
+      "title": "OdontogramRecord",
+      "description": "Patient ISO 3950 interactive dental chart state",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string", "maxLength": 64 },
+        "notation": { "type": "string", "enum": ["FDI", "Universal"] },
+        "teethJson": { "type": "string", "maxLength": 32000 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["patientId", "notation", "teethJson", "updatedBy", "updatedAt"]
+    },
+    "ClinicalNote": {
+      "title": "ClinicalNote",
+      "description": "Dentist-approved clinical examination, progress note, or prescription",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string", "maxLength": 64 },
+        "doctorId": { "type": "string", "maxLength": 64 },
+        "doctorName": { "type": "string", "maxLength": 120 },
+        "noteType": { "type": "string", "enum": ["examination", "progress", "prescription", "perio"] },
+        "chiefComplaint": { "type": "string", "maxLength": 500 },
+        "findings": { "type": "string", "maxLength": 1500 },
+        "diagnosis": { "type": "string", "maxLength": 800 },
+        "prescriptionJson": { "type": "string", "maxLength": 4000 },
+        "isFinalized": { "type": "boolean" },
+        "authorUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["patientId", "doctorId", "noteType", "isFinalized", "authorUid", "createdAt"]
+    },
+    "TreatmentPlan": {
+      "title": "TreatmentPlan",
+      "description": "Multi-phase patient dental treatment plan and consent tracking",
+      "type": "object",
+      "properties": {
+        "planCode": { "type": "string", "maxLength": 32 },
+        "patientId": { "type": "string", "maxLength": 64 },
+        "patientName": { "type": "string", "maxLength": 140 },
+        "doctorId": { "type": "string", "maxLength": 64 },
+        "doctorName": { "type": "string", "maxLength": 120 },
+        "title": { "type": "string", "maxLength": 160 },
+        "status": { "type": "string", "maxLength": 40 },
+        "itemsJson": { "type": "string", "maxLength": 16000 },
+        "totalEstimated": { "type": "number" },
+        "discount": { "type": "number" },
+        "netEstimated": { "type": "number" },
+        "consentSigned": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["planCode", "patientId", "doctorId", "title", "status", "totalEstimated", "createdAt"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Patient invoice and payment allocation record",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string", "maxLength": 32 },
+        "patientId": { "type": "string", "maxLength": 64 },
+        "patientName": { "type": "string", "maxLength": 140 },
+        "doctorId": { "type": "string", "maxLength": 64 },
+        "itemsJson": { "type": "string", "maxLength": 12000 },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number" },
+        "tax": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "balanceDue": { "type": "number" },
+        "status": { "type": "string", "enum": ["Unpaid", "Partially Paid", "Paid", "Refunded", "Void"] },
+        "paymentsJson": { "type": "string", "maxLength": 12000 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["invoiceNumber", "patientId", "grandTotal", "paidAmount", "balanceDue", "status", "createdAt"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "Double-entry accounting journal voucher where totalDebit equals totalCredit",
+      "type": "object",
+      "properties": {
+        "entryNumber": { "type": "string", "maxLength": 32 },
+        "date": { "type": "string", "maxLength": 20 },
+        "voucherType": { "type": "string", "enum": ["Payment", "Receive", "Journal", "Contra", "Expense", "Adjustment"] },
+        "category": { "type": "string", "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 300 },
+        "linesJson": { "type": "string", "maxLength": 8000 },
+        "totalDebit": { "type": "number" },
+        "totalCredit": { "type": "number" },
+        "referenceId": { "type": "string", "maxLength": 64 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["entryNumber", "date", "voucherType", "totalDebit", "totalCredit", "createdBy", "createdAt"]
+    },
+    "BudgetItem": {
+      "title": "BudgetItem",
+      "description": "Monthly clinic expense category budget",
+      "type": "object",
+      "properties": {
+        "month": { "type": "string", "maxLength": 10 },
+        "category": { "type": "string", "maxLength": 80 },
+        "plannedAmount": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 240 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["month", "category", "plannedAmount", "createdAt"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Dental consumable or material inventory with batch and expiry",
+      "type": "object",
+      "properties": {
+        "sku": { "type": "string", "maxLength": 40 },
+        "name": { "type": "string", "maxLength": 140 },
+        "category": { "type": "string", "maxLength": 80 },
+        "unit": { "type": "string", "maxLength": 32 },
+        "purchaseCost": { "type": "number" },
+        "currentStock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "batchNumber": { "type": "string", "maxLength": 64 },
+        "expiryDate": { "type": "string", "maxLength": 20 },
+        "supplierName": { "type": "string", "maxLength": 120 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sku", "name", "category", "unit", "currentStock", "minStock", "updatedAt"]
+    },
+    "SterilizationLog": {
+      "title": "SterilizationLog",
+      "description": "Autoclave cycle and infection control register",
+      "type": "object",
+      "properties": {
+        "batchId": { "type": "string", "maxLength": 40 },
+        "instrumentSet": { "type": "string", "maxLength": 140 },
+        "equipmentName": { "type": "string", "maxLength": 120 },
+        "cycleDate": { "type": "string", "maxLength": 20 },
+        "cycleTime": { "type": "string", "maxLength": 16 },
+        "indicatorResult": { "type": "string", "enum": ["Pass", "Fail", "Pending"] },
+        "responsibleStaff": { "type": "string", "maxLength": 120 },
+        "notes": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["batchId", "instrumentSet", "equipmentName", "cycleDate", "indicatorResult", "responsibleStaff", "createdAt"]
+    },
+    "CallRecord": {
+      "title": "CallRecord",
+      "description": "AI Receptionist and outbound reminder call record",
+      "type": "object",
+      "properties": {
+        "callCode": { "type": "string", "maxLength": 32 },
+        "direction": { "type": "string", "enum": ["inbound", "outbound"] },
+        "callerNumber": { "type": "string", "maxLength": 32 },
+        "language": { "type": "string", "maxLength": 32 },
+        "intent": { "type": "string", "maxLength": 80 },
+        "outcome": { "type": "string", "maxLength": 80 },
+        "durationSec": { "type": "integer" },
+        "transferredToHuman": { "type": "boolean" },
+        "emergencyFlag": { "type": "boolean" },
+        "consentDisclosed": { "type": "boolean" },
+        "appointmentId": { "type": "string", "maxLength": 64 },
+        "summary": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["callCode", "direction", "callerNumber", "outcome", "emergencyFlag", "consentDisclosed", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security and clinical audit trail entry",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "actorEmail": { "type": "string", "maxLength": 160 },
+        "actorRole": { "type": "string", "maxLength": 40 },
+        "action": { "type": "string", "maxLength": 80 },
+        "resourceType": { "type": "string", "maxLength": 60 },
+        "resourceId": { "type": "string", "maxLength": 80 },
+        "details": { "type": "string", "maxLength": 600 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorUid", "actorEmail", "action", "resourceType", "timestamp"]
+    },
+    "LabCase": {
+      "title": "LabCase",
+      "description": "Dental laboratory case for crowns, bridges, and prosthetics",
+      "type": "object",
+      "properties": {
+        "caseCode": { "type": "string", "maxLength": 32 },
+        "patientId": { "type": "string", "maxLength": 64 },
+        "patientName": { "type": "string", "maxLength": 140 },
+        "doctorId": { "type": "string", "maxLength": 64 },
+        "toothNumber": { "type": "string", "maxLength": 16 },
+        "restorationType": { "type": "string", "maxLength": 80 },
+        "labName": { "type": "string", "maxLength": 120 },
+        "shade": { "type": "string", "maxLength": 32 },
+        "labCost": { "type": "number" },
+        "status": { "type": "string", "enum": ["Created", "Sent to Lab", "In Progress", "Received", "Fitted", "Rework Required"] },
+        "expectedDelivery": { "type": "string", "maxLength": 20 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["caseCode", "patientId", "doctorId", "restorationType", "labName", "status", "createdAt"]
+    },
+    "BackupRecord": {
+      "title": "BackupRecord",
+      "description": "Clinic backup verification and snapshot metadata record",
+      "type": "object",
+      "properties": {
+        "backupId": { "type": "string", "maxLength": 64 },
+        "label": { "type": "string", "maxLength": 120 },
+        "backupType": { "type": "string", "enum": ["Daily", "Weekly", "Monthly", "Manual", "Pre-Update", "Pre-Migration", "Pre-Restore"] },
+        "recordCount": { "type": "integer" },
+        "fileCount": { "type": "integer" },
+        "sizeBytes": { "type": "integer" },
+        "destination": { "type": "string", "maxLength": 120 },
+        "encryptionStatus": { "type": "string", "maxLength": 80 },
+        "checksum": { "type": "string", "maxLength": 128 },
+        "checksumStatus": { "type": "string", "enum": ["Verified", "Pending", "Mismatch"] },
+        "status": { "type": "string", "enum": ["Pending", "Running", "Completed", "Failed", "Verification Required", "Verified", "Restored", "Created"] },
+        "failureReason": { "type": "string", "maxLength": 300 },
+        "restoreStatus": { "type": "string", "maxLength": 80 },
+        "storagePath": { "type": "string", "maxLength": 240 },
+        "wpStored": { "type": "boolean" },
+        "gcsStored": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["label", "recordCount", "status", "createdBy", "createdAt"]
+    },
+    "SyncJob": {
+      "title": "SyncJob",
+      "description": "Transactional outbox background synchronization job",
+      "type": "object",
+      "properties": {
+        "jobId": { "type": "string", "maxLength": 64 },
+        "eventId": { "type": "string", "maxLength": 64 },
+        "idempotencyKey": { "type": "string", "maxLength": 120 },
+        "sourceModule": { "type": "string", "maxLength": 80 },
+        "destination": { "type": "string", "enum": ["Google Cloud Storage", "WordPress Vault", "WordPress Public", "Microsoft Graph Excel"] },
+        "status": { "type": "string", "enum": ["Queued", "Processing", "Completed", "Failed", "Retrying", "Cancelled"] },
+        "retryCount": { "type": "integer" },
+        "lastError": { "type": "string", "maxLength": 300 },
+        "nextRetryTime": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["jobId", "eventId", "idempotencyKey", "sourceModule", "destination", "status", "retryCount", "createdAt"]
+    },
+    "IntegrationSettings": {
+      "title": "IntegrationSettings",
+      "description": "Non-secret integration configuration for WordPress, Microsoft Graph, and GCS backup scheduling",
+      "type": "object",
+      "properties": {
+        "wpSiteUrl": { "type": "string", "maxLength": 240 },
+        "wpUsername": { "type": "string", "maxLength": 100 },
+        "wpPublicSyncEnabled": { "type": "boolean" },
+        "wpBackupSyncEnabled": { "type": "boolean" },
+        "msDriveLocation": { "type": "string", "enum": ["OneDrive", "SharePoint"] },
+        "msWorkbookName": { "type": "string", "maxLength": 160 },
+        "msWorksheetName": { "type": "string", "maxLength": 120 },
+        "msSyncFrequency": { "type": "string", "enum": ["Manual", "Hourly", "Daily"] },
+        "msSyncDirection": { "type": "string", "enum": ["Export Only", "Bidirectional (Owner Approved)"] },
+        "gcsBucketName": { "type": "string", "maxLength": 120 },
+        "gcsKmsEnabled": { "type": "boolean" },
+        "dailyBackupTime": { "type": "string", "maxLength": 16 },
+        "weeklyRetentionDays": { "type": "integer" },
+        "monthlyRetentionDays": { "type": "integer" },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["updatedAt"]
+    },
+    "RestoreRun": {
+      "title": "RestoreRun",
+      "description": "Verified staging restore and owner approval record",
+      "type": "object",
+      "properties": {
+        "backupId": { "type": "string", "maxLength": 64 },
+        "preRestoreBackupId": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["Staging Verified", "Approved & Applied", "Failed"] },
+        "verifiedCountsJson": { "type": "string", "maxLength": 4000 },
+        "financialReconciled": { "type": "boolean" },
+        "checksumMatched": { "type": "boolean" },
+        "approvedBy": { "type": "string", "maxLength": 128 },
+        "notes": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["backupId", "status", "verifiedCountsJson", "financialReconciled", "checksumMatched", "createdAt"]
+    },
+    "ExcelImportRecord": {
+      "title": "ExcelImportRecord",
+      "description": "Owner-approved controlled Excel import log",
+      "type": "object",
+      "properties": {
+        "filename": { "type": "string", "maxLength": 160 },
+        "worksheetName": { "type": "string", "maxLength": 120 },
+        "targetEntity": { "type": "string", "maxLength": 60 },
+        "totalRows": { "type": "integer" },
+        "validRows": { "type": "integer" },
+        "errorRows": { "type": "integer" },
+        "status": { "type": "string", "enum": ["Previewed", "Approved & Imported", "Rejected"] },
+        "approvedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["filename", "worksheetName", "targetEntity", "totalRows", "validRows", "errorRows", "status", "createdAt"]
+    },
+    "DocumentRef": {
+      "title": "DocumentRef",
+      "description": "Authorized clinical imaging and document metadata reference",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string", "maxLength": 64 },
+        "category": { "type": "string", "enum": ["xray", "cbct", "consent", "lab", "clinical_photo"] },
+        "filename": { "type": "string", "maxLength": 160 },
+        "mimeType": { "type": "string", "maxLength": 80 },
+        "sizeBytes": { "type": "integer" },
+        "checksum": { "type": "string", "maxLength": 128 },
+        "storagePath": { "type": "string", "maxLength": 240 },
+        "uploadedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["category", "filename", "mimeType", "sizeBytes", "checksum", "storagePath", "uploadedBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "User accounts and clinic role permissions"
+    },
+    "/organizations/{orgId}": {
+      "schema": { "$ref": "#/entities/OrganizationConfig" },
+      "description": "Clinic organization profile and setup settings"
+    },
+    "/organizations/{orgId}/staff/{staffId}": {
+      "schema": { "$ref": "#/entities/StaffMember" },
+      "description": "Clinic doctors, assistants, and staff directory"
+    },
+    "/organizations/{orgId}/patients/{patientId}": {
+      "schema": { "$ref": "#/entities/Patient" },
+      "description": "Clinic patient profiles and medical alerts"
+    },
+    "/organizations/{orgId}/services/{serviceId}": {
+      "schema": { "$ref": "#/entities/ServiceCatalogItem" },
+      "description": "Configured dental services and fee schedule"
+    },
+    "/organizations/{orgId}/appointments/{appointmentId}": {
+      "schema": { "$ref": "#/entities/Appointment" },
+      "description": "Scheduled appointments and live reception queue"
+    },
+    "/organizations/{orgId}/odontograms/{patientId}": {
+      "schema": { "$ref": "#/entities/OdontogramRecord" },
+      "description": "Interactive ISO 3950 patient dental chart"
+    },
+    "/organizations/{orgId}/clinical_notes/{noteId}": {
+      "schema": { "$ref": "#/entities/ClinicalNote" },
+      "description": "Dentist clinical examinations and prescriptions"
+    },
+    "/organizations/{orgId}/treatment_plans/{planId}": {
+      "schema": { "$ref": "#/entities/TreatmentPlan" },
+      "description": "Multi-phase dental treatment plans"
+    },
+    "/organizations/{orgId}/invoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/Invoice" },
+      "description": "Patient invoices and payment ledger"
+    },
+    "/organizations/{orgId}/journals/{journalId}": {
+      "schema": { "$ref": "#/entities/JournalEntry" },
+      "description": "Double-entry clinic accounting journal vouchers"
+    },
+    "/organizations/{orgId}/budgets/{budgetId}": {
+      "schema": { "$ref": "#/entities/BudgetItem" },
+      "description": "Monthly clinic category budgets"
+    },
+    "/organizations/{orgId}/inventory/{itemId}": {
+      "schema": { "$ref": "#/entities/InventoryItem" },
+      "description": "Dental material stock and expiry tracking"
+    },
+    "/organizations/{orgId}/sterilization_logs/{logId}": {
+      "schema": { "$ref": "#/entities/SterilizationLog" },
+      "description": "Autoclave sterilization and infection control register"
+    },
+    "/organizations/{orgId}/call_records/{callId}": {
+      "schema": { "$ref": "#/entities/CallRecord" },
+      "description": "AI Receptionist call logs and outbound reminder summaries"
+    },
+    "/organizations/{orgId}/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable clinic audit history"
+    },
+    "/organizations/{orgId}/lab_cases/{caseId}": {
+      "schema": { "$ref": "#/entities/LabCase" },
+      "description": "Dental laboratory crown and prosthetic cases"
+    },
+    "/organizations/{orgId}/backups/{backupId}": {
+      "schema": { "$ref": "#/entities/BackupRecord" },
+      "description": "Clinic backup snapshot verification logs"
+    },
+    "/organizations/{orgId}/sync_jobs/{jobId}": {
+      "schema": { "$ref": "#/entities/SyncJob" },
+      "description": "Transactional outbox background sync jobs"
+    },
+    "/organizations/{orgId}/integration_configs/{configId}": {
+      "schema": { "$ref": "#/entities/IntegrationSettings" },
+      "description": "Non-secret integration settings for WordPress, Microsoft Graph, and GCS"
+    },
+    "/organizations/{orgId}/restore_runs/{restoreId}": {
+      "schema": { "$ref": "#/entities/RestoreRun" },
+      "description": "Staging restore verification and owner approval logs"
+    },
+    "/organizations/{orgId}/excel_imports/{importId}": {
+      "schema": { "$ref": "#/entities/ExcelImportRecord" },
+      "description": "Controlled Excel import validation and approval logs"
+    },
+    "/organizations/{orgId}/document_refs/{docId}": {
+      "schema": { "$ref": "#/entities/DocumentRef" },
+      "description": "Clinical imaging and document metadata references"
+    }
+  }
+}
