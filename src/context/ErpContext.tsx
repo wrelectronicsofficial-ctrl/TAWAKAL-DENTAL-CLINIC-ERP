@@ -238,7 +238,19 @@ export function ErpProvider({ children }: { children: React.ReactNode }) {
     try {
       await signInWithPopup(auth, googleAuthProvider);
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Google sign-in failed.');
+      const msg = err instanceof Error ? err.message : 'Google sign-in failed.';
+      if (msg.includes('auth/unauthorized-domain')) {
+        const host = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+        setAuthError(
+          `Domain "${host}" is not yet in Firebase Authorized Domains. Add it in Firebase Console → Authentication → Settings → Authorized domains.`
+        );
+      } else if (msg.includes('auth/popup-blocked')) {
+        setAuthError('Sign-in popup was blocked by your browser. Please allow popups for this site and try again.');
+      } else if (msg.includes('auth/popup-closed-by-user')) {
+        setAuthError('Google sign-in window was closed before finishing sign-in.');
+      } else {
+        setAuthError(msg);
+      }
     }
   };
 

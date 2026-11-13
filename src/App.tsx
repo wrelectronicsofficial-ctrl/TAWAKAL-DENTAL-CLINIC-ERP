@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { AlertCircle, LogOut, Plus, Search, ShieldAlert } from 'lucide-react';
+import React, { Component, ErrorInfo, ReactNode, useMemo, useState } from 'react';
+import { AlertCircle, LogOut, Plus, RefreshCw, Search, ShieldAlert } from 'lucide-react';
 import { ErpProvider, useErp } from './context/ErpContext';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
@@ -238,10 +238,58 @@ function WorkspaceShell() {
   );
 }
 
+class AppErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; message: string }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, message: error?.message || 'Unexpected application error' };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Tawakal ERP Runtime Error:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+          <div className="bg-white border border-slate-200 rounded-xl p-8 max-w-md w-full text-center space-y-4 shadow-sm">
+            <AlertCircle className="w-8 h-8 text-red-600 mx-auto" />
+            <h1 className="text-lg font-semibold text-slate-900">Tawakal Dental Clinic ERP</h1>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              The interface encountered an unexpected error and recovered safely to protect your clinical session.
+            </p>
+            <p className="text-[11px] font-mono text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5 break-words">
+              {this.state.message}
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Reload Application</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <ErpProvider>
-      <WorkspaceShell />
-    </ErpProvider>
+    <AppErrorBoundary>
+      <ErpProvider>
+        <WorkspaceShell />
+      </ErpProvider>
+    </AppErrorBoundary>
   );
 }

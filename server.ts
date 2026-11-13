@@ -775,7 +775,7 @@ app.post('/api/ai/assistant', requireFirebaseAuth, async (req: AuthRequest, res:
 });
 
 async function startServer() {
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

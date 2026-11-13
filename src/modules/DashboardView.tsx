@@ -305,8 +305,8 @@ export function DashboardView({ onOpenWizard }: { onOpenWizard: () => void }) {
               </p>
             </div>
           ) : (
-            <div className="h-60">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="w-full h-60 min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                 <BarChart data={financialChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                   <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#475569' }} />
@@ -348,8 +348,8 @@ export function DashboardView({ onOpenWizard }: { onOpenWizard: () => void }) {
               </button>
             </div>
           ) : (
-            <div className="h-60 flex items-center">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="w-full h-60 min-w-0 flex items-center">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                 <PieChart>
                   <Pie data={serviceBreakdown} dataKey="count" nameKey="name" innerRadius={48} outerRadius={80} paddingAngle={3}>
                     {serviceBreakdown.map((_, index) => (

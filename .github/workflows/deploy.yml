@@ -48,10 +48,16 @@ jobs:
       - name: Resolve Vite base path
         run: |
           RAW_BASE="${{ steps.pages.outputs.base_path }}"
-          if [ -z "$RAW_BASE" ] || [ "$RAW_BASE" = "/" ]; then
+          REPO_NAME="${{ github.event.repository.name }}"
+          OWNER_SITE="${{ github.repository_owner }}.github.io"
+          if [ -n "$RAW_BASE" ] && [ "$RAW_BASE" != "/" ]; then
+            echo "VITE_BASE_PATH=${RAW_BASE%/}/" >> "$GITHUB_ENV"
+          elif [ "$RAW_BASE" = "/" ]; then
+            echo "VITE_BASE_PATH=/" >> "$GITHUB_ENV"
+          elif [ "$REPO_NAME" = "$OWNER_SITE" ]; then
             echo "VITE_BASE_PATH=/" >> "$GITHUB_ENV"
           else
-            echo "VITE_BASE_PATH=${RAW_BASE%/}/" >> "$GITHUB_ENV"
+            echo "VITE_BASE_PATH=/${REPO_NAME}/" >> "$GITHUB_ENV"
           fi
 
       - name: Build static Vite bundle
